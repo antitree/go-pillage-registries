@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 
 	"github.com/remeh/sizedwaitgroup"
 
@@ -15,16 +16,16 @@ import (
 )
 
 var (
-	repos                []string
-	tags                 []string
-	skiptls              bool
-	insecure             bool
-	storeImages          bool
-	registry             string
-	cachePath            string
-	resultsPath          string
-	workerCount          int
-	bruteForceConfigFile string
+	repos       []string
+	tags        []string
+	skiptls     bool
+	insecure    bool
+	storeImages bool
+	registry    string
+	cachePath   string
+	resultsPath string
+	workerCount int
+	truffleHog  bool
 )
 
 func init() {
@@ -37,6 +38,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&storeImages, "store-images", "s", false, "Downloads filesystem for discovered images and stores an archive in the output directory (Disabled by default, requires --results to be set)")
 	rootCmd.PersistentFlags().StringVarP(&cachePath, "cache", "c", "", "Path to cache image layers (optional, only used if images are pulled)")
 	rootCmd.PersistentFlags().IntVarP(&workerCount, "workers", "w", 8, "Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled)")
+	rootCmd.PersistentFlags().BoolVarP(&truffleHog, "trufflehog", "x", false, "Integrate with Trufflehog to scan the images once they are found")
 	// rootCmd.PersistentFlags().StringVar(&bruteForceConfigFile, "config", "", "Path to brute force config JSON file (optional)")
 }
 
@@ -79,6 +81,12 @@ func run(_ *cobra.Command, registries []string) {
 				wg.Done()
 			}(image)
 		}
+
+		if truffleHog == true && CheckTrufflehogInstalled() {
+			log.Printf("Running trufflehog against the images...")
+			pillage.RunTruffleHog(image)
+
+		}
 	}
 
 	wg.Wait()
@@ -90,6 +98,16 @@ func run(_ *cobra.Command, registries []string) {
 		}
 		fmt.Println(string(out))
 	}
+}
+
+// CheckTrufflehogInstalled verifies if trufflehog is in the system PATH
+func CheckTrufflehogInstalled() bool {
+	_, err := exec.LookPath("trufflehog")
+	if err != nil {
+		log.Println("⚠️  trufflehog not found in PATH. Skipping trufflehog scans.")
+		return false
+	}
+	return true
 }
 
 func main() {

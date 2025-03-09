@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sync"
@@ -308,4 +309,16 @@ func EnumRegistries(regs []string, repos []string, tags []string, options ...cra
 		wg.Wait()
 	}()
 	return out
+}
+
+func RunTruffleHog(imageRef *ImageData) error {
+	image := securejoin(imageRef.Registry, imageRef.Repository, imageRef.Tag)
+	cmd := exec.Command("trufflehog", "docker", fmt.Sprintf("--image=%s", image))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("trufflehog failed for %s: %v\nOutput:\n%s", image, err, string(output))
+		return err
+	}
+	log.Printf("trufflehog completed for %s:\n%s", image, string(output))
+	return nil
 }
