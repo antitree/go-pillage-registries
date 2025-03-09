@@ -1,6 +1,9 @@
 package pillage
 
 import (
+	"bytes"
+	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -14,7 +17,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/cache"
 )
 
-//ImageData represents an image enumerated from a registry or alternatively an error that occured while enumerating a registry.
+// ImageData represents an image enumerated from a registry or alternatively an error that occured while enumerating a registry.
 type ImageData struct {
 	Reference  string
 	Registry   string
@@ -25,7 +28,7 @@ type ImageData struct {
 	Error      error
 }
 
-//StorageOptions is passed to ImageData.Store to set the location and options for pulling the image data.
+// StorageOptions is passed to ImageData.Store to set the location and options for pulling the image data.
 type StorageOptions struct {
 	CachePath    string
 	ResultsPath  string
@@ -33,7 +36,17 @@ type StorageOptions struct {
 	CraneOptions []crane.Option
 }
 
-//MakeCraneOption initalizes an array of crane options for use when interacting with a registry
+// Store a default brute force config file
+
+//go:embed default_config.json
+var defaultConfigData []byte
+
+type BruteForceConfig struct {
+	Repos []string `json:"repos"`
+	Names []string `json:"names"`
+}
+
+// MakeCraneOption initalizes an array of crane options for use when interacting with a registry
 func MakeCraneOptions(insecure bool) (options []crane.Option) {
 	if insecure {
 		options = append(options, crane.Insecure)
@@ -49,7 +62,7 @@ func securejoin(paths ...string) (out string) {
 	return out
 }
 
-//Store will output the information enumerated from an image to an output directory and optionally will pull the image filesystems as well
+// Store will output the information enumerated from an image to an output directory and optionally will pull the image filesystems as well
 func (image *ImageData) Store(options *StorageOptions) error {
 	log.Printf("Storing results for image: %s", image.Reference)
 
@@ -116,7 +129,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 	return image.Error
 }
 
-//EnumImage will read a specific image from a remote registry and returns the result asynchronously.
+// EnumImage will read a specific image from a remote registry and returns the result asynchronously.
 func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-chan *ImageData {
 	out := make(chan *ImageData)
 
@@ -151,8 +164,8 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 	return out
 }
 
-//EnumRepository will read all images tagged in a specific repository on a remote registry and returns the results asynchronously.
-//If a list of tags is not supplied, a list will be enumerated from the registry's API.
+// EnumRepository will read all images tagged in a specific repository on a remote registry and returns the results asynchronously.
+// If a list of tags is not supplied, a list will be enumerated from the registry's API.
 func EnumRepository(reg string, repo string, tags []string, options ...crane.Option) <-chan *ImageData {
 	out := make(chan *ImageData)
 	ref := fmt.Sprintf("%s/%s", reg, repo)
@@ -195,26 +208,25 @@ func EnumRepository(reg string, repo string, tags []string, options ...crane.Opt
 	return out
 }
 
-//EnumRegistry will read all images cataloged on a remote registry and returns the results asynchronously.
-//If lists of repositories and tags are not supplied, lists will be enumerated from the registry's API.
+// EnumRegistry will read all images cataloged on a remote registry and returns the results asynchronously.
+// If lists of repositories and tags are not supplied, lists will be enumerated from the registry's API.
 func EnumRegistry(reg string, repos []string, tags []string, options ...crane.Option) <-chan *ImageData {
 	out := make(chan *ImageData)
 	log.Printf("Registry: %s\n", reg)
 
+	bruteForceFile := defaultConfigData
+
 	go func() {
 		defer close(out)
+		var err error
 
 		if len(repos) == 0 {
-			var err error
 			repos, err = crane.Catalog(reg, options...)
-
+			// log.Print(repos)
 			if err != nil {
 				log.Printf("Error listing repos for %s: (%T) %s", reg, err, err)
-				out <- &ImageData{
-					Reference: reg,
-					Registry:  reg,
-					Error:     err,
-				}
+				log.Printf("Catalog API not available. Falling back to brute force enumeration.")
+				repos = bruteForceTags(reg, bruteForceFile, options...)
 			}
 		}
 
@@ -229,15 +241,42 @@ func EnumRegistry(reg string, repos []string, tags []string, options ...crane.Op
 					out <- image
 				}
 			}(repo)
-
 		}
+
 		wg.Wait()
 	}()
 	return out
 }
 
-//EnumRegistries will read all images cataloged by a set of remote registries and returns the results asynchronously.
-//If lists of repositories and tags are not supplied, lists will be enumerated from the registry's API.
+// Brute forces common repo names to see if they exist in the registry. This includes pass-through
+// configured names. Modify the default_config.json for specific combinations
+func bruteForceTags(reg string, bruteForceConfig []byte, options ...crane.Option) []string {
+	var tags []string
+
+	var config BruteForceConfig
+	if err := json.NewDecoder(bytes.NewReader(defaultConfigData)).Decode(&config); err != nil {
+		log.Printf("Error decoding embedded config: %s", err)
+		return tags
+	}
+
+	for _, repoPrefix := range config.Repos {
+		log.Printf("Bruteforcing %s repos", repoPrefix)
+		for _, name := range config.Names {
+
+			ref := fmt.Sprintf("%s/%s", reg, path.Join(repoPrefix, name))
+
+			_, err := crane.Manifest(ref, options...)
+			if err == nil {
+				tags = append(tags, path.Join(repoPrefix, name))
+			}
+		}
+	}
+
+	return tags
+}
+
+// EnumRegistries will read all images cataloged by a set of remote registries and returns the results asynchronously.
+// If lists of repositories and tags are not supplied, lists will be enumerated from the registry's API.
 func EnumRegistries(regs []string, repos []string, tags []string, options ...crane.Option) <-chan *ImageData {
 	out := make(chan *ImageData)
 	go func() {

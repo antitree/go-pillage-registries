@@ -10,21 +10,21 @@ import (
 
 	"github.com/remeh/sizedwaitgroup"
 
-	"github.com/nccgroup/go-pillage-registries/pkg/pillage"
+	"github.com/antitree/go-pillage-registries/pkg/pillage"
 	"github.com/spf13/cobra"
 )
 
 var (
-	// Used for flags.
-	repos       []string
-	tags        []string
-	skiptls     bool
-	insecure    bool
-	storeImages bool
-	registry    string
-	cachePath   string
-	resultsPath string
-	workerCount int
+	repos                []string
+	tags                 []string
+	skiptls              bool
+	insecure             bool
+	storeImages          bool
+	registry             string
+	cachePath            string
+	resultsPath          string
+	workerCount          int
+	bruteForceConfigFile string
 )
 
 func init() {
@@ -37,6 +37,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&storeImages, "store-images", "s", false, "Downloads filesystem for discovered images and stores an archive in the output directory (Disabled by default, requires --results to be set)")
 	rootCmd.PersistentFlags().StringVarP(&cachePath, "cache", "c", "", "Path to cache image layers (optional, only used if images are pulled)")
 	rootCmd.PersistentFlags().IntVarP(&workerCount, "workers", "w", 8, "Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled)")
+	// rootCmd.PersistentFlags().StringVar(&bruteForceConfigFile, "config", "", "Path to brute force config JSON file (optional)")
 }
 
 var rootCmd = &cobra.Command{
@@ -47,15 +48,12 @@ var rootCmd = &cobra.Command{
 }
 
 func run(_ *cobra.Command, registries []string) {
-
-	//Transport options
 	if skiptls {
 		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	craneoptions := pillage.MakeCraneOptions(insecure)
 
-	//Validate and initalize storage options
 	if storeImages && resultsPath == "" {
 		log.Fatalf("Cannot pull images without destination path. Unset --pull-images or set --results")
 	}
@@ -66,15 +64,12 @@ func run(_ *cobra.Command, registries []string) {
 		CraneOptions: craneoptions,
 	}
 
-	//Enumerate images from registries
 	images := pillage.EnumRegistries(registries, repos, tags, craneoptions...)
 
-	//Collect images and store results
 	var results []*pillage.ImageData
 	wg := sizedwaitgroup.New(workerCount)
 
 	for image := range images {
-
 		if resultsPath == "" {
 			results = append(results, image)
 		} else {
@@ -84,7 +79,6 @@ func run(_ *cobra.Command, registries []string) {
 				wg.Done()
 			}(image)
 		}
-
 	}
 
 	wg.Wait()
@@ -96,7 +90,6 @@ func run(_ *cobra.Command, registries []string) {
 		}
 		fmt.Println(string(out))
 	}
-
 }
 
 func main() {
