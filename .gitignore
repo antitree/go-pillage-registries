@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+tmp/
 pilreg
 main
 

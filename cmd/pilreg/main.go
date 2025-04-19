@@ -29,6 +29,7 @@ var (
 	workerCount int
 	truffleHog  bool
 	whiteOut    bool
+	filterSmall int64
 )
 
 func init() {
@@ -43,6 +44,7 @@ func init() {
 	storageFlags.StringVarP(&outputPath, "output", "o", ".", "Directory to store output. Required with --store-images.")
 	storageFlags.BoolVarP(&storeImages, "store-images", "s", false, "Download and store image filesystems.")
 	storageFlags.StringVarP(&cachePath, "cache", "c", ".", "Path to cache image layers.")
+	storageFlags.Int64VarP(&filterSmall, "small", "f", 40000, "Filter analysis on layers that are this size in bytes. (Default 40k)")
 	rootCmd.PersistentFlags().AddFlagSet(storageFlags)
 
 	// Analysis config options
@@ -109,7 +111,8 @@ func run(_ *cobra.Command, registries []string) {
 		CachePath:    cachePath,
 		OutputPath:   outputPath,
 		CraneOptions: craneoptions,
-		FilterSmall:  whiteOut,
+		WhiteOut:     whiteOut,
+		FilterSmall:  filterSmall,
 	}
 
 	images := pillage.EnumRegistries(registries, repos, tags, craneoptions...)

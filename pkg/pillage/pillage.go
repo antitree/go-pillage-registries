@@ -11,12 +11,14 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/crane"
 )
@@ -45,8 +47,9 @@ type StorageOptions struct {
 	OutputPath    string
 	StoreImages   bool
 	CraneOptions  []crane.Option
-	FilterSmall   bool
+	FilterSmall   int64
 	StoreTarballs bool
+	WhiteOut      bool
 }
 
 //go:embed default_config.json
@@ -94,7 +97,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 	}
 
 	if image.Error == nil {
-		if options.FilterSmall {
+		if options.WhiteOut || options.StoreImages || options.StoreTarballs {
 			var parsed Manifest
 			err := json.Unmarshal([]byte(image.Manifest), &parsed)
 			if err != nil {
@@ -105,7 +108,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 			var previousFiles = make(map[string][]byte)
 			for _, layer := range parsed.Layers {
 				// whiteout files are small
-				if layer.Size > 40000 && options.FilterSmall {
+				if layer.Size > options.FilterSmall {
 					continue
 				}
 
@@ -117,12 +120,6 @@ func (image *ImageData) Store(options *StorageOptions) error {
 					continue
 				}
 
-				// TODO THERE'S SOME KIND OF LOGIC HERE YOU NEED TO FIX
-				// IT'S CREATING A FILESYSTEM.TAR FILE SO THAT YOU CAN
-				// DECOMPRESS IT BUT YOU DON'T NEED THIS USUALLY. MAYBER EVER
-				// COME UP WITH AN OPTIONAL STORE OF THE FILESYSTEM.TAR OR
-				// DELETE IT AFTER THE DECOMPRESS HAPPENS.
-				//filePath := filepath.Join(layerDir, "filesystem.tar")
 				layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
 
 				err = EnumLayer(image, layerDir, layerRef, options, options.CraneOptions, previousFiles)
@@ -130,82 +127,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 					LogWarn("Failed processing layer %s: %v", layer.Digest, err)
 					continue
 				}
-				// 	crLayer, err := crane.PullLayer(layerRef, options.CraneOptions...)
-				// 	if err != nil {
-				// 		log.Printf("Failed to pull layer %s: %v", layer.Digest, err)
-				// 		continue
-				// 	}
 
-				// 	rc, err := crLayer.Compressed()
-				// 	if err != nil {
-				// 		log.Printf("Failed to get compressed stream for %s: %v", layer.Digest, err)
-				// 		continue
-				// 	}
-				// 	f, err := os.Create(filePath)
-				// 	if err != nil {
-				// 		rc.Close()
-				// 		log.Printf("Failed to create layer file %s: %v", filePath, err)
-				// 		continue
-				// 	}
-				// 	_, err = io.Copy(f, rc)
-				// 	rc.Close()
-				// 	f.Close()
-				// 	if err != nil {
-				// 		log.Printf("Error saving layer file: %v", err)
-				// 		continue
-				// 	}
-
-				// 	tarF, err := os.Open(filePath)
-				// 	if err != nil {
-				// 		log.Printf("Failed to open tar file %s: %v", filePath, err)
-				// 		continue
-				// 	}
-				// 	gzr, err := gzip.NewReader(tarF)
-				// 	if err != nil {
-				// 		tarF.Close()
-				// 		log.Printf("Failed to create gzip reader for %s: %v", filePath, err)
-				// 		continue
-				// 	}
-				// 	tarReader := tar.NewReader(gzr)
-
-				// 	for {
-				// 		hdr, err := tarReader.Next()
-				// 		if err == io.EOF {
-				// 			break
-				// 		}
-				// 		if err != nil {
-				// 			log.Printf("Error reading tar entry: %v", err)
-				// 			break
-				// 		}
-
-				// 		base := filepath.Base(hdr.Name)
-				// 		if strings.HasPrefix(base, ".wh.") {
-				// 			deletedFile := strings.TrimPrefix(base, ".wh.")
-				// 			if data, ok := previousFiles[deletedFile]; ok {
-				// 				restorePath := filepath.Join(layerDir, deletedFile)
-				// 				os.MkdirAll(filepath.Dir(restorePath), 0755)
-				// 				restoreFile, err := os.Create(restorePath)
-				// 				if err != nil {
-				// 					log.Printf("Failed to create restore file %s: %v", restorePath, err)
-				// 					continue
-				// 				}
-				// 				_, err = restoreFile.Write(data)
-				// 				restoreFile.Close()
-				// 				if err != nil {
-				// 					log.Printf("Error writing restored file %s: %v", restorePath, err)
-				// 				} else {
-				// 					log.Printf("Whiteout file found %s from %s", deletedFile, hdr.Name)
-				// 				}
-				// 			}
-				// 		} else if hdr.Typeflag == tar.TypeReg {
-				// 			var buf bytes.Buffer
-				// 			_, err := io.Copy(&buf, tarReader)
-				// 			if err == nil {
-				// 				previousFiles[filepath.Base(hdr.Name)] = buf.Bytes()
-				// 			}
-				// 		}
-				// 	}
-				// 	tarF.Close()
 			}
 		}
 
@@ -259,11 +181,32 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, storageOptions *Stor
 		}
 		tarReader = tar.NewReader(gzr)
 	} else {
-		gzr, err := gzip.NewReader(rc)
-		if err != nil {
-			return fmt.Errorf("gzip decompress failed: %w", err)
+		// Save original to close it later
+		originalRC := rc
+		defer originalRC.Close()
+
+		// Peek first few bytes to check for gzip magic header
+		buf := make([]byte, 2)
+		if _, err := io.ReadFull(rc, buf); err != nil {
+			return fmt.Errorf("peek error: %w", err)
 		}
-		tarReader = tar.NewReader(gzr)
+
+		// Restore peeked bytes into stream
+		rc = io.NopCloser(io.MultiReader(bytes.NewReader(buf), rc))
+
+		// Check for gzip magic numbers
+		isGzip := buf[0] == 0x1f && buf[1] == 0x8b
+		if isGzip {
+			gzr, err := gzip.NewReader(rc)
+			if err != nil {
+				return fmt.Errorf("gzip decompress failed: %w", err)
+			}
+			defer gzr.Close()
+			tarReader = tar.NewReader(gzr)
+		} else {
+			tarReader = tar.NewReader(rc)
+		}
+
 	}
 
 	// Determine where to write restored files
@@ -347,7 +290,14 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 
 		var manifest Manifest
 
-		unparsedmanifest, err := crane.Manifest(ref, options...)
+		var unparsedmanifest []byte
+		err := retryWithBackoff(5, 60*time.Second, func() error {
+			m, err := crane.Manifest(ref, options...)
+			if err == nil {
+				unparsedmanifest = m
+			}
+			return err
+		})
 		if err != nil {
 			LogError("Error fetching manifest for image %s: %s", ref, err)
 			result.Error = err
@@ -359,13 +309,15 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 			result.Error = err
 		}
 
-		for i := 0; i < len(manifest.Layers); {
-			if manifest.Layers[i].Size > 40000 {
-				manifest.Layers = append(manifest.Layers[:i], manifest.Layers[i+1:]...)
-			} else {
-				i++
-			}
-		}
+		// HACK this was a test for whiteout detection. This shinks the layers but it's arbitrary
+		// TODO refactor
+		// for i := 0; i < len(manifest.Layers); {
+		// 	if manifest.Layers[i].Size > 40000 {
+		// 		manifest.Layers = append(manifest.Layers[:i], manifest.Layers[i+1:]...)
+		// 	} else {
+		// 		i++
+		// 	}
+		// }
 
 		strManifest, err := json.MarshalIndent(manifest, "", "  ")
 		if err != nil {
@@ -373,13 +325,22 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 		}
 		result.Manifest = string(strManifest)
 
-		config, err := crane.Config(ref, options...)
+		var config []byte
+		err = retryWithBackoff(5, 60*time.Second, func() error {
+			m, err := crane.Config(ref, options...)
+			if err == nil {
+				config = m
+			}
+			return err
+		})
+		//config, err := crane.Config(ref, options...)
 		if err != nil {
 			log.Printf("Error fetching config for image %s: %s (the config may be in the manifest itself)", ref, err)
 
 			errStr := err.Error()
 			if strings.Contains(errStr, "TOOMANYREQUESTS") ||
-				strings.Contains(errStr, "Rate exceeded") {
+				strings.Contains(errStr, "Rate exceeded") ||
+				strings.Contains(errStr, "429") {
 				log.Fatalf("Fatal: rate limited on %s: %v", ref, err)
 			}
 		}
@@ -500,7 +461,7 @@ func bruteForceTags(reg string, bruteForceConfig []byte, options ...crane.Option
 
 			ref := fmt.Sprintf("%s/%s", reg, path.Join(repoPrefix, name))
 
-			_, err := crane.Manifest(ref, options...)
+			_, err := crane.Manifest(ref, options...) // what does this do??
 			if err == nil {
 				tags = append(tags, path.Join(repoPrefix, name))
 			}
@@ -555,4 +516,32 @@ func RunTruffleHog(imageRef *ImageData) error {
 	}
 	log.Printf("trufflehog completed for %s:\n%s", image, string(output))
 	return nil
+}
+
+func retryWithBackoff(attempts int, baseDelay time.Duration, op func() error) error {
+	delay := baseDelay
+
+	for i := 0; i < attempts; i++ {
+		err := op()
+		if err == nil {
+			return nil
+		}
+
+		if i < attempts-1 {
+			// Add jitter (up to 50% of delay)
+			jitter := time.Duration(rand.Int63n(int64(delay) / 2))
+			sleep := delay + jitter
+
+			log.Printf("Retrying after %v due to error: %v", sleep, err)
+			time.Sleep(sleep)
+			delay *= 2
+			// if delay > 30*time.Second {
+			// 	delay = 30 * time.Second // Cap max delay
+			// }
+		} else {
+			return err
+		}
+	}
+
+	return errors.New("max retries exceeded")
 }
