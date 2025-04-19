@@ -190,47 +190,14 @@ func (image *ImageData) Store(options *StorageOptions) error {
 				tarF.Close()
 			}
 		}
-		// } else {
-		// 	fs, err := crane.Pull(image.Reference, options.CraneOptions...)
-		// 	if err != nil {
-		// 		image.Error = err
-		// 	}
-		// 	if options.CachePath != "" {
-		// 		fs = cache.Image(fs, cache.NewFilesystemCache(options.CachePath))
-		// 	}
-		// 	fsPath := path.Join(imagePath, "filesystem.tar")
-		// 	if err := crane.Save(fs, image.Reference, fsPath); err != nil {
-		// 		log.Printf("Error saving tarball %s: %v", fsPath, err)
-		// 		if image.Error == nil {
-		// 			image.Error = err
-		// 		} else {
-		// 			image.Error = errors.New(image.Error.Error() + err.Error())
-		// 		}
-		// 	}
 
-		// 	if image.Config != "" {
-		// 		configPath := path.Join(imagePath, "config.json")
-		// 		err := ioutil.WriteFile(configPath, []byte(image.Config), os.ModePerm)
-		// 		if err != nil {
-		// 			log.Printf("Error making config file %s: %v", configPath, err)
-		// 		}
-		// 	}
-
-		// 	if image.Manifest != "" {
-		// 		manifestPath := path.Join(imagePath, "manifest.json")
-		// 		err := ioutil.WriteFile(manifestPath, []byte(image.Manifest), os.ModePerm)
-		// 		if err != nil {
-		// 			log.Printf("Error making manifest file %s: %v", manifestPath, err)
-		// 		}
-		// 	}
-		// }
 	}
 
 	if image.Error != nil {
 		errorPath := path.Join(imagePath, "errors.log")
 		err := ioutil.WriteFile(errorPath, []byte(image.Error.Error()), os.ModePerm)
 		if err != nil {
-			log.Printf("Error making error file %s: %v", errorPath, err)
+			return fmt.Errorf("error making error file %s: %v", errorPath, err)
 		}
 	}
 	return image.Error
@@ -307,6 +274,14 @@ func EnumRepository(reg string, repo string, tags []string, options ...crane.Opt
 			tags, err = crane.ListTags(ref, options...)
 
 			if err != nil {
+				// Classify connection error
+				errStr := err.Error()
+				if strings.Contains(errStr, "connection refused") ||
+					strings.Contains(errStr, "no such host") ||
+					strings.Contains(errStr, "dial tcp") {
+					log.Fatalf("Fatal: cannot reach registry for %s: %v", ref, err)
+				}
+
 				log.Printf("Error listing tags for %s: %s", ref, err)
 				out <- &ImageData{
 					Reference:  ref,
