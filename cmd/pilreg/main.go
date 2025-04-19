@@ -26,6 +26,7 @@ var (
 	resultsPath string
 	workerCount int
 	truffleHog  bool
+	whiteOut    bool
 )
 
 func init() {
@@ -39,6 +40,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cachePath, "cache", "c", "", "Path to cache image layers (optional, only used if images are pulled)")
 	rootCmd.PersistentFlags().IntVarP(&workerCount, "workers", "w", 8, "Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled)")
 	rootCmd.PersistentFlags().BoolVarP(&truffleHog, "trufflehog", "x", false, "Integrate with Trufflehog to scan the images once they are found")
+	rootCmd.PersistentFlags().BoolVarP(&whiteOut, "whiteout", "w", false, "Hunt for hidden or sensitive layers that were deleted")
 	// rootCmd.PersistentFlags().StringVar(&bruteForceConfigFile, "config", "", "Path to brute force config JSON file (optional)")
 }
 
@@ -64,6 +66,7 @@ func run(_ *cobra.Command, registries []string) {
 		CachePath:    cachePath,
 		ResultsPath:  resultsPath,
 		CraneOptions: craneoptions,
+		FilterSmall:  whiteOut,
 	}
 
 	images := pillage.EnumRegistries(registries, repos, tags, craneoptions...)
@@ -72,6 +75,7 @@ func run(_ *cobra.Command, registries []string) {
 	wg := sizedwaitgroup.New(workerCount)
 
 	for image := range images {
+
 		if resultsPath == "" {
 			results = append(results, image)
 		} else {
@@ -82,11 +86,12 @@ func run(_ *cobra.Command, registries []string) {
 			}(image)
 		}
 
-		if truffleHog == true && CheckTrufflehogInstalled() {
+		if truffleHog && CheckTrufflehogInstalled() {
 			log.Printf("Running trufflehog against the images...")
 			pillage.RunTruffleHog(image)
 
 		}
+
 	}
 
 	wg.Wait()

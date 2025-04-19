@@ -1,17 +1,22 @@
 package pillage
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -29,12 +34,22 @@ type ImageData struct {
 	Error      error
 }
 
+// Manifest format
+type Manifest struct {
+	Layers []struct {
+		Digest    string `json:"digest"`
+		Size      int64  `json:"size"`
+		MediaType string `json:"mediaType"`
+	} `json:"layers"`
+}
+
 // StorageOptions is passed to ImageData.Store to set the location and options for pulling the image data.
 type StorageOptions struct {
 	CachePath    string
 	ResultsPath  string
 	StoreImages  bool
 	CraneOptions []crane.Option
+	FilterSmall  bool
 }
 
 // Store a default brute force config file
@@ -61,6 +76,77 @@ func securejoin(paths ...string) (out string) {
 		out = filepath.Join(out, filepath.Clean("/"+path))
 	}
 	return out
+}
+
+// DownloadAndExtractLayers pulls each layer blob by digest and extracts it to disk.
+func DownloadAndExtractLayers(registry, outputPath string, digests []string) error {
+	for _, digest := range digests {
+		log.Printf("Fetching layer: %s", digest)
+
+		url := fmt.Sprintf("https://%s/v2/%s/blobs/%s", registry, "", digest)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to download layer %s: %w", digest, err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, digest)
+		}
+
+		gzr, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read gzip for %s: %w", digest, err)
+		}
+		tarReader := tar.NewReader(gzr)
+
+		for {
+			hdr, err := tarReader.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("tar read error: %w", err)
+			}
+
+			targetPath := filepath.Join(outputPath, hdr.Name)
+			if !strings.HasPrefix(targetPath, filepath.Clean(outputPath)+string(os.PathSeparator)) {
+				log.Printf("invalid path in tar: %s", hdr.Name)
+				continue
+			}
+
+			if strings.HasPrefix(filepath.Base(hdr.Name), ".wh.") {
+				layerDir := ""
+				outPath := filepath.Join(layerDir, hdr.Name)
+				if !strings.HasPrefix(outPath, filepath.Clean(layerDir)+string(os.PathSeparator)) {
+					log.Printf("Skipping suspicious whiteout path: %s", hdr.Name)
+					continue
+				}
+
+				log.Printf("Whiteout file identified. Review for sensitive values: %s", hdr.Name)
+
+				os.MkdirAll(filepath.Dir(outPath), 0755)
+				outFile, err := os.Create(outPath)
+				if err != nil {
+					log.Printf("Failed to create whiteout file %s: %v", outPath, err)
+					continue
+				}
+				_, err = io.Copy(outFile, tarReader)
+				outFile.Close()
+				if err != nil {
+					log.Printf("Error extracting whiteout file %s: %v", outPath, err)
+				}
+			} else {
+				log.Printf("Skipping non-whiteout file: %s", hdr.Name)
+			}
+		}
+	}
+	return nil
 }
 
 // Store will output the information enumerated from an image to an output directory and optionally will pull the image filesystems as well
@@ -99,22 +185,148 @@ func (image *ImageData) Store(options *StorageOptions) error {
 
 	//pull and save the image if asked
 	if image.Error == nil && options.StoreImages {
+		if options.FilterSmall {
+			var parsed Manifest
+			err := json.Unmarshal([]byte(image.Manifest), &parsed)
+			if err != nil {
+				log.Printf("Error parsing manifest JSON for filtering: %v", err)
+				return err
+			}
 
-		fs, err := crane.Pull(image.Reference, options.CraneOptions...)
-		if err != nil {
-			image.Error = err
-		}
-		if options.CachePath != "" {
-			fs = cache.Image(fs, cache.NewFilesystemCache(options.CachePath))
-		}
+			for _, layer := range parsed.Layers {
+				if layer.Size > 40000 {
+					continue
+				}
 
-		fsPath := path.Join(imagePath, "filesystem.tar")
-		if err := crane.Save(fs, image.Reference, fsPath); err != nil {
-			log.Printf("Error saving tarball %s: %v", fsPath, err)
-			if image.Error == nil {
+				layerDir := filepath.Join(imagePath, strings.ReplaceAll(layer.Digest, ":", "_"))
+				err := os.MkdirAll(layerDir, 0755)
+				if err != nil {
+					log.Printf("Failed to create dir %s: %v", layerDir, err)
+					continue
+				}
+
+				filePath := filepath.Join(layerDir, "filesystem.tar")
+				layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
+				crLayer, err := crane.PullLayer(layerRef, options.CraneOptions...)
+				if err != nil {
+					log.Printf("Failed to pull layer %s: %v", layer.Digest, err)
+					continue
+				}
+
+				rc, err := crLayer.Compressed()
+				if err != nil {
+					log.Printf("Failed to get compressed stream for %s: %v", layer.Digest, err)
+					continue
+				}
+				f, err := os.Create(filePath)
+				if err != nil {
+					rc.Close()
+					log.Printf("Failed to create layer file %s: %v", filePath, err)
+					continue
+				}
+				_, err = io.Copy(f, rc)
+				rc.Close()
+				f.Close()
+				if err != nil {
+					log.Printf("Error saving layer file: %v", err)
+					continue
+				}
+
+				tarF, err := os.Open(filePath)
+				if err != nil {
+					log.Printf("Failed to open tar file %s: %v", filePath, err)
+					continue
+				}
+				gzr, err := gzip.NewReader(tarF)
+				if err != nil {
+					tarF.Close()
+					log.Printf("Failed to create gzip reader for %s: %v", filePath, err)
+					continue
+				}
+				tarReader := tar.NewReader(gzr)
+				// Check if any file in the archive starts with .wh.
+				foundWhiteout := false
+				var headers []*tar.Header
+				for {
+					hdr, err := tarReader.Next()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						log.Printf("Error reading tar entry: %v", err)
+						break
+					}
+					headers = append(headers, hdr)
+					if strings.HasPrefix(filepath.Base(hdr.Name), ".wh.") {
+						foundWhiteout = true
+					}
+				}
+				tarF.Seek(0, 0) // rewind the file
+				gzr, _ = gzip.NewReader(tarF)
+				tarReader = tar.NewReader(gzr)
+
+				if !foundWhiteout {
+					//log.Printf("Skipping layer %s: no .wh. files", layer.Digest)
+					tarF.Close()
+					continue
+				}
+
+				for {
+					hdr, err := tarReader.Next()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						log.Printf("Error reading tar entry: %v", err)
+						break
+					}
+
+					if !strings.HasPrefix(filepath.Base(hdr.Name), ".wh.") {
+						continue
+					}
+
+					outPath := filepath.Join(layerDir, hdr.Name)
+					if !strings.HasPrefix(outPath, filepath.Clean(layerDir)+string(os.PathSeparator)) {
+						log.Printf("Skipping suspicious tar path: %s", hdr.Name)
+						continue
+					}
+
+					os.MkdirAll(filepath.Dir(outPath), 0755)
+					outFile, err := os.Create(outPath)
+					if err != nil {
+						log.Printf("Failed to create file %s: %v", outPath, err)
+						continue
+					}
+					if hdr.Size == 0 {
+						log.Printf("Skipping zero-sized whiteout file: %s", hdr.Name)
+						outFile.Close()
+						continue
+					}
+					_, err = io.Copy(outFile, tarReader)
+					outFile.Close()
+					if err != nil {
+						log.Printf("Error extracting file %s: %v", outPath, err)
+					}
+
+					log.Printf("Whiteout file found! Extracting %s file from %s", hdr.Name, layer.Digest)
+				}
+			}
+		} else {
+			fs, err := crane.Pull(image.Reference, options.CraneOptions...)
+			if err != nil {
 				image.Error = err
-			} else {
-				image.Error = errors.New(image.Error.Error() + err.Error())
+			}
+			if options.CachePath != "" {
+				fs = cache.Image(fs, cache.NewFilesystemCache(options.CachePath))
+			}
+			fsPath := path.Join(imagePath, "filesystem.tar")
+			if err := crane.Save(fs, image.Reference, fsPath); err != nil {
+				log.Printf("Error saving tarball %s: %v", fsPath, err)
+				if image.Error == nil {
+					image.Error = err
+				} else {
+					image.Error = errors.New(image.Error.Error() + err.Error())
+				}
 			}
 		}
 	}
@@ -146,12 +358,33 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 			Tag:        tag,
 		}
 
-		manifest, err := crane.Manifest(ref, options...)
+		var manifest Manifest
+
+		unparsedmanifest, err := crane.Manifest(ref, options...)
 		if err != nil {
 			log.Printf("Error fetching manifest for image %s: %s", ref, err)
 			result.Error = err
 		}
-		result.Manifest = string(manifest)
+
+		err = json.Unmarshal([]byte(unparsedmanifest), &manifest)
+		if err != nil {
+			log.Printf("Error parsing manifest for image %s: %s", ref, err)
+			result.Error = err
+		}
+
+		for i := 0; i < len(manifest.Layers); {
+			if manifest.Layers[i].Size > 40000 {
+				manifest.Layers = append(manifest.Layers[:i], manifest.Layers[i+1:]...)
+			} else {
+				i++
+			}
+		}
+
+		strManifest, err := json.MarshalIndent(manifest, "", "  ")
+		if err != nil {
+			log.Printf("Error fetching parsing Manifest for image %s: %s", ref, err)
+		}
+		result.Manifest = string(strManifest)
 
 		config, err := crane.Config(ref, options...)
 		if err != nil {

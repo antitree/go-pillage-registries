@@ -1,0 +1,26 @@
+# === Stage 1: Sign the file ===
+FROM cgr.dev/chainguard/wolfi-base 
+
+RUN apk add --no-cache openssl jq
+
+WORKDIR /app
+
+COPY keys.json .
+COPY to-sign.txt .
+
+# Extract private key from keys.json and write to private.pem
+RUN jq -r '.private_key' keys.json | base64 -d > private.pem
+
+# Delete the file
+RUN rm keys.json
+
+# Sign the file
+RUN openssl dgst -sha256 -sign private.pem -out signed.sha256 to-sign.txt
+
+WORKDIR /app
+
+#COPY --from=signer /app/to-sign.txt .
+#COPY --from=signer /app/signed.sha256 .
+
+CMD ["cat", "signed.sha256"]
+
