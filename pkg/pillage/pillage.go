@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -20,7 +19,6 @@ import (
 	"sync"
 
 	"github.com/google/go-containerregistry/pkg/crane"
-	"github.com/google/go-containerregistry/pkg/v1/cache"
 )
 
 // ImageData represents an image enumerated from a registry or alternatively an error that occured while enumerating a registry.
@@ -34,7 +32,6 @@ type ImageData struct {
 	Error      error
 }
 
-// Manifest format
 type Manifest struct {
 	Layers []struct {
 		Digest    string `json:"digest"`
@@ -43,7 +40,6 @@ type Manifest struct {
 	} `json:"layers"`
 }
 
-// StorageOptions is passed to ImageData.Store to set the location and options for pulling the image data.
 type StorageOptions struct {
 	CachePath    string
 	ResultsPath  string
@@ -51,8 +47,6 @@ type StorageOptions struct {
 	CraneOptions []crane.Option
 	FilterSmall  bool
 }
-
-// Store a default brute force config file
 
 //go:embed default_config.json
 var defaultConfigData []byte
@@ -62,12 +56,10 @@ type BruteForceConfig struct {
 	Names []string `json:"names"`
 }
 
-// MakeCraneOption initalizes an array of crane options for use when interacting with a registry
 func MakeCraneOptions(insecure bool) (options []crane.Option) {
 	if insecure {
 		options = append(options, crane.Insecure)
 	}
-
 	return options
 }
 
@@ -78,112 +70,17 @@ func securejoin(paths ...string) (out string) {
 	return out
 }
 
-// DownloadAndExtractLayers pulls each layer blob by digest and extracts it to disk.
-func DownloadAndExtractLayers(registry, outputPath string, digests []string) error {
-	for _, digest := range digests {
-		log.Printf("Fetching layer: %s", digest)
-
-		url := fmt.Sprintf("https://%s/v2/%s/blobs/%s", registry, "", digest)
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return fmt.Errorf("failed to create request: %w", err)
-		}
-
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("failed to download layer %s: %w", digest, err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != 200 {
-			return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, digest)
-		}
-
-		gzr, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read gzip for %s: %w", digest, err)
-		}
-		tarReader := tar.NewReader(gzr)
-
-		for {
-			hdr, err := tarReader.Next()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("tar read error: %w", err)
-			}
-
-			targetPath := filepath.Join(outputPath, hdr.Name)
-			if !strings.HasPrefix(targetPath, filepath.Clean(outputPath)+string(os.PathSeparator)) {
-				log.Printf("invalid path in tar: %s", hdr.Name)
-				continue
-			}
-
-			if strings.HasPrefix(filepath.Base(hdr.Name), ".wh.") {
-				layerDir := ""
-				outPath := filepath.Join(layerDir, hdr.Name)
-				if !strings.HasPrefix(outPath, filepath.Clean(layerDir)+string(os.PathSeparator)) {
-					log.Printf("Skipping suspicious whiteout path: %s", hdr.Name)
-					continue
-				}
-
-				log.Printf("Whiteout file identified. Review for sensitive values: %s", hdr.Name)
-
-				os.MkdirAll(filepath.Dir(outPath), 0755)
-				outFile, err := os.Create(outPath)
-				if err != nil {
-					log.Printf("Failed to create whiteout file %s: %v", outPath, err)
-					continue
-				}
-				_, err = io.Copy(outFile, tarReader)
-				outFile.Close()
-				if err != nil {
-					log.Printf("Error extracting whiteout file %s: %v", outPath, err)
-				}
-			} else {
-				log.Printf("Skipping non-whiteout file: %s", hdr.Name)
-			}
-		}
-	}
-	return nil
-}
-
-// Store will output the information enumerated from an image to an output directory and optionally will pull the image filesystems as well
 func (image *ImageData) Store(options *StorageOptions) error {
 	log.Printf("Storing results for image: %s", image.Reference)
-
-	//make image output dir
 	imagePath := filepath.Join(options.ResultsPath, securejoin(image.Registry, image.Repository, image.Tag))
+
+	// Why? Shouldn't we move this decision later?
 	err := os.MkdirAll(imagePath, os.ModePerm)
 	if err != nil {
 		log.Printf("Error making storage path %s: %v", imagePath, err)
 		return err
 	}
 
-	log.Printf("Storing results for image: %s", image.Reference)
-
-	//store image config
-	if image.Config != "" {
-		configPath := path.Join(imagePath, "config.json")
-		//configFile, err := os.Create(configPath, os.ModePerm)
-		//defer configFile.Close()
-		err := ioutil.WriteFile(configPath, []byte(image.Config), os.ModePerm)
-		if err != nil {
-			log.Printf("Error making config file %s: %v", configPath, err)
-		}
-	}
-
-	//store image manifest
-	if image.Manifest != "" {
-		manifestPath := path.Join(imagePath, "manifest.json")
-		err := ioutil.WriteFile(manifestPath, []byte(image.Manifest), os.ModePerm)
-		if err != nil {
-			log.Printf("Error making manifest file %s: %v", manifestPath, err)
-		}
-	}
-
-	//pull and save the image if asked
 	if image.Error == nil && options.StoreImages {
 		if options.FilterSmall {
 			var parsed Manifest
@@ -193,8 +90,10 @@ func (image *ImageData) Store(options *StorageOptions) error {
 				return err
 			}
 
+			var previousFiles = make(map[string][]byte)
 			for _, layer := range parsed.Layers {
-				if layer.Size > 40000 {
+				// whiteout files are small
+				if layer.Size > 40000 && options.FilterSmall {
 					continue
 				}
 
@@ -205,6 +104,11 @@ func (image *ImageData) Store(options *StorageOptions) error {
 					continue
 				}
 
+				// TODO THERE'S SOME KIND OF LOGIC HERE YOU NEED TO FIX
+				// IT'S CREATING A FILESYSTEM.TAR FILE SO THAT YOU CAN
+				// DECOMPRESS IT BUT YOU DON'T NEED THIS USUALLY. MAYBER EVER
+				// COME UP WITH AN OPTIONAL STORE OF THE FILESYSTEM.TAR OR
+				// DELETE IT AFTER THE DECOMPRESS HAPPENS.
 				filePath := filepath.Join(layerDir, "filesystem.tar")
 				layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
 				crLayer, err := crane.PullLayer(layerRef, options.CraneOptions...)
@@ -244,32 +148,6 @@ func (image *ImageData) Store(options *StorageOptions) error {
 					continue
 				}
 				tarReader := tar.NewReader(gzr)
-				// Check if any file in the archive starts with .wh.
-				foundWhiteout := false
-				var headers []*tar.Header
-				for {
-					hdr, err := tarReader.Next()
-					if err == io.EOF {
-						break
-					}
-					if err != nil {
-						log.Printf("Error reading tar entry: %v", err)
-						break
-					}
-					headers = append(headers, hdr)
-					if strings.HasPrefix(filepath.Base(hdr.Name), ".wh.") {
-						foundWhiteout = true
-					}
-				}
-				tarF.Seek(0, 0) // rewind the file
-				gzr, _ = gzip.NewReader(tarF)
-				tarReader = tar.NewReader(gzr)
-
-				if !foundWhiteout {
-					//log.Printf("Skipping layer %s: no .wh. files", layer.Digest)
-					tarF.Close()
-					continue
-				}
 
 				for {
 					hdr, err := tarReader.Next()
@@ -281,57 +159,72 @@ func (image *ImageData) Store(options *StorageOptions) error {
 						break
 					}
 
-					if !strings.HasPrefix(filepath.Base(hdr.Name), ".wh.") {
-						continue
+					base := filepath.Base(hdr.Name)
+					if strings.HasPrefix(base, ".wh.") {
+						deletedFile := strings.TrimPrefix(base, ".wh.")
+						if data, ok := previousFiles[deletedFile]; ok {
+							restorePath := filepath.Join(layerDir, deletedFile)
+							os.MkdirAll(filepath.Dir(restorePath), 0755)
+							restoreFile, err := os.Create(restorePath)
+							if err != nil {
+								log.Printf("Failed to create restore file %s: %v", restorePath, err)
+								continue
+							}
+							_, err = restoreFile.Write(data)
+							restoreFile.Close()
+							if err != nil {
+								log.Printf("Error writing restored file %s: %v", restorePath, err)
+							} else {
+								log.Printf("Whiteout file found %s from %s", deletedFile, hdr.Name)
+							}
+						}
+					} else if hdr.Typeflag == tar.TypeReg {
+						var buf bytes.Buffer
+						_, err := io.Copy(&buf, tarReader)
+						if err == nil {
+							previousFiles[filepath.Base(hdr.Name)] = buf.Bytes()
+						}
 					}
-
-					outPath := filepath.Join(layerDir, hdr.Name)
-					if !strings.HasPrefix(outPath, filepath.Clean(layerDir)+string(os.PathSeparator)) {
-						log.Printf("Skipping suspicious tar path: %s", hdr.Name)
-						continue
-					}
-
-					os.MkdirAll(filepath.Dir(outPath), 0755)
-					outFile, err := os.Create(outPath)
-					if err != nil {
-						log.Printf("Failed to create file %s: %v", outPath, err)
-						continue
-					}
-					if hdr.Size == 0 {
-						log.Printf("Skipping zero-sized whiteout file: %s", hdr.Name)
-						outFile.Close()
-						continue
-					}
-					_, err = io.Copy(outFile, tarReader)
-					outFile.Close()
-					if err != nil {
-						log.Printf("Error extracting file %s: %v", outPath, err)
-					}
-
-					log.Printf("Whiteout file found! Extracting %s file from %s", hdr.Name, layer.Digest)
 				}
-			}
-		} else {
-			fs, err := crane.Pull(image.Reference, options.CraneOptions...)
-			if err != nil {
-				image.Error = err
-			}
-			if options.CachePath != "" {
-				fs = cache.Image(fs, cache.NewFilesystemCache(options.CachePath))
-			}
-			fsPath := path.Join(imagePath, "filesystem.tar")
-			if err := crane.Save(fs, image.Reference, fsPath); err != nil {
-				log.Printf("Error saving tarball %s: %v", fsPath, err)
-				if image.Error == nil {
-					image.Error = err
-				} else {
-					image.Error = errors.New(image.Error.Error() + err.Error())
-				}
+				tarF.Close()
 			}
 		}
+		// } else {
+		// 	fs, err := crane.Pull(image.Reference, options.CraneOptions...)
+		// 	if err != nil {
+		// 		image.Error = err
+		// 	}
+		// 	if options.CachePath != "" {
+		// 		fs = cache.Image(fs, cache.NewFilesystemCache(options.CachePath))
+		// 	}
+		// 	fsPath := path.Join(imagePath, "filesystem.tar")
+		// 	if err := crane.Save(fs, image.Reference, fsPath); err != nil {
+		// 		log.Printf("Error saving tarball %s: %v", fsPath, err)
+		// 		if image.Error == nil {
+		// 			image.Error = err
+		// 		} else {
+		// 			image.Error = errors.New(image.Error.Error() + err.Error())
+		// 		}
+		// 	}
+
+		// 	if image.Config != "" {
+		// 		configPath := path.Join(imagePath, "config.json")
+		// 		err := ioutil.WriteFile(configPath, []byte(image.Config), os.ModePerm)
+		// 		if err != nil {
+		// 			log.Printf("Error making config file %s: %v", configPath, err)
+		// 		}
+		// 	}
+
+		// 	if image.Manifest != "" {
+		// 		manifestPath := path.Join(imagePath, "manifest.json")
+		// 		err := ioutil.WriteFile(manifestPath, []byte(image.Manifest), os.ModePerm)
+		// 		if err != nil {
+		// 			log.Printf("Error making manifest file %s: %v", manifestPath, err)
+		// 		}
+		// 	}
+		// }
 	}
 
-	//store errors
 	if image.Error != nil {
 		errorPath := path.Join(imagePath, "errors.log")
 		err := ioutil.WriteFile(errorPath, []byte(image.Error.Error()), os.ModePerm)

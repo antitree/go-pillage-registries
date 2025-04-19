@@ -40,7 +40,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cachePath, "cache", "c", "", "Path to cache image layers (optional, only used if images are pulled)")
 	rootCmd.PersistentFlags().IntVarP(&workerCount, "workers", "w", 8, "Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled)")
 	rootCmd.PersistentFlags().BoolVarP(&truffleHog, "trufflehog", "x", false, "Integrate with Trufflehog to scan the images once they are found")
-	rootCmd.PersistentFlags().BoolVarP(&whiteOut, "whiteout", "w", false, "Hunt for hidden or sensitive layers that were deleted")
+	rootCmd.PersistentFlags().BoolVarP(&whiteOut, "whiteout", "0", false, "Hunt for hidden or sensitive layers that were deleted")
 	// rootCmd.PersistentFlags().StringVar(&bruteForceConfigFile, "config", "", "Path to brute force config JSON file (optional)")
 }
 
