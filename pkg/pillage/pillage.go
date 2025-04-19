@@ -73,16 +73,27 @@ func securejoin(paths ...string) (out string) {
 
 func (image *ImageData) Store(options *StorageOptions) error {
 	log.Printf("Storing results for image: %s", image.Reference)
-	imagePath := filepath.Join(options.OutputPath, securejoin(image.Registry, image.Repository, image.Tag))
+	var imagePath string
 
-	// Why? Shouldn't we move this decision later?
-	err := os.MkdirAll(imagePath, os.ModePerm)
-	if err != nil {
+	if options.CachePath == "" {
+		tmpDir, err := os.MkdirTemp("", "pilreg-tmp-")
+		if err != nil {
+			fmt.Println("Failed to create temp dir:", err)
+			return err
+		}
+
+		defer os.RemoveAll(tmpDir) // clean up
+
+		options.CachePath = tmpDir
+	}
+
+	imagePath = filepath.Join(options.CachePath, securejoin(image.Registry, image.Repository, image.Tag))
+	if err := os.MkdirAll(imagePath, os.ModePerm); err != nil {
 		log.Printf("Error making storage path %s: %v", imagePath, err)
 		return err
 	}
 
-	if image.Error == nil && options.StoreImages {
+	if image.Error == nil {
 		if options.FilterSmall {
 			var parsed Manifest
 			err := json.Unmarshal([]byte(image.Manifest), &parsed)
@@ -99,6 +110,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 				}
 
 				layerDir := filepath.Join(imagePath, strings.ReplaceAll(layer.Digest, ":", "_"))
+
 				err := os.MkdirAll(layerDir, 0755)
 				if err != nil {
 					log.Printf("Failed to create dir %s: %v", layerDir, err)
@@ -110,84 +122,90 @@ func (image *ImageData) Store(options *StorageOptions) error {
 				// DECOMPRESS IT BUT YOU DON'T NEED THIS USUALLY. MAYBER EVER
 				// COME UP WITH AN OPTIONAL STORE OF THE FILESYSTEM.TAR OR
 				// DELETE IT AFTER THE DECOMPRESS HAPPENS.
-				filePath := filepath.Join(layerDir, "filesystem.tar")
+				//filePath := filepath.Join(layerDir, "filesystem.tar")
 				layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
-				crLayer, err := crane.PullLayer(layerRef, options.CraneOptions...)
-				if err != nil {
-					log.Printf("Failed to pull layer %s: %v", layer.Digest, err)
-					continue
-				}
 
-				rc, err := crLayer.Compressed()
+				err = EnumLayer(image, layerDir, layerRef, options, options.CraneOptions, previousFiles)
 				if err != nil {
-					log.Printf("Failed to get compressed stream for %s: %v", layer.Digest, err)
+					LogWarn("Failed processing layer %s: %v", layer.Digest, err)
 					continue
 				}
-				f, err := os.Create(filePath)
-				if err != nil {
-					rc.Close()
-					log.Printf("Failed to create layer file %s: %v", filePath, err)
-					continue
-				}
-				_, err = io.Copy(f, rc)
-				rc.Close()
-				f.Close()
-				if err != nil {
-					log.Printf("Error saving layer file: %v", err)
-					continue
-				}
+				// 	crLayer, err := crane.PullLayer(layerRef, options.CraneOptions...)
+				// 	if err != nil {
+				// 		log.Printf("Failed to pull layer %s: %v", layer.Digest, err)
+				// 		continue
+				// 	}
 
-				tarF, err := os.Open(filePath)
-				if err != nil {
-					log.Printf("Failed to open tar file %s: %v", filePath, err)
-					continue
-				}
-				gzr, err := gzip.NewReader(tarF)
-				if err != nil {
-					tarF.Close()
-					log.Printf("Failed to create gzip reader for %s: %v", filePath, err)
-					continue
-				}
-				tarReader := tar.NewReader(gzr)
+				// 	rc, err := crLayer.Compressed()
+				// 	if err != nil {
+				// 		log.Printf("Failed to get compressed stream for %s: %v", layer.Digest, err)
+				// 		continue
+				// 	}
+				// 	f, err := os.Create(filePath)
+				// 	if err != nil {
+				// 		rc.Close()
+				// 		log.Printf("Failed to create layer file %s: %v", filePath, err)
+				// 		continue
+				// 	}
+				// 	_, err = io.Copy(f, rc)
+				// 	rc.Close()
+				// 	f.Close()
+				// 	if err != nil {
+				// 		log.Printf("Error saving layer file: %v", err)
+				// 		continue
+				// 	}
 
-				for {
-					hdr, err := tarReader.Next()
-					if err == io.EOF {
-						break
-					}
-					if err != nil {
-						log.Printf("Error reading tar entry: %v", err)
-						break
-					}
+				// 	tarF, err := os.Open(filePath)
+				// 	if err != nil {
+				// 		log.Printf("Failed to open tar file %s: %v", filePath, err)
+				// 		continue
+				// 	}
+				// 	gzr, err := gzip.NewReader(tarF)
+				// 	if err != nil {
+				// 		tarF.Close()
+				// 		log.Printf("Failed to create gzip reader for %s: %v", filePath, err)
+				// 		continue
+				// 	}
+				// 	tarReader := tar.NewReader(gzr)
 
-					base := filepath.Base(hdr.Name)
-					if strings.HasPrefix(base, ".wh.") {
-						deletedFile := strings.TrimPrefix(base, ".wh.")
-						if data, ok := previousFiles[deletedFile]; ok {
-							restorePath := filepath.Join(layerDir, deletedFile)
-							os.MkdirAll(filepath.Dir(restorePath), 0755)
-							restoreFile, err := os.Create(restorePath)
-							if err != nil {
-								log.Printf("Failed to create restore file %s: %v", restorePath, err)
-								continue
-							}
-							_, err = restoreFile.Write(data)
-							restoreFile.Close()
-							if err != nil {
-								log.Printf("Error writing restored file %s: %v", restorePath, err)
-							} else {
-								log.Printf("Whiteout file found %s from %s", deletedFile, hdr.Name)
-							}
-						}
-					} else if hdr.Typeflag == tar.TypeReg {
-						var buf bytes.Buffer
-						_, err := io.Copy(&buf, tarReader)
-						if err == nil {
-							previousFiles[filepath.Base(hdr.Name)] = buf.Bytes()
-						}
-					}
-				}
-				tarF.Close()
+				// 	for {
+				// 		hdr, err := tarReader.Next()
+				// 		if err == io.EOF {
+				// 			break
+				// 		}
+				// 		if err != nil {
+				// 			log.Printf("Error reading tar entry: %v", err)
+				// 			break
+				// 		}
+
+				// 		base := filepath.Base(hdr.Name)
+				// 		if strings.HasPrefix(base, ".wh.") {
+				// 			deletedFile := strings.TrimPrefix(base, ".wh.")
+				// 			if data, ok := previousFiles[deletedFile]; ok {
+				// 				restorePath := filepath.Join(layerDir, deletedFile)
+				// 				os.MkdirAll(filepath.Dir(restorePath), 0755)
+				// 				restoreFile, err := os.Create(restorePath)
+				// 				if err != nil {
+				// 					log.Printf("Failed to create restore file %s: %v", restorePath, err)
+				// 					continue
+				// 				}
+				// 				_, err = restoreFile.Write(data)
+				// 				restoreFile.Close()
+				// 				if err != nil {
+				// 					log.Printf("Error writing restored file %s: %v", restorePath, err)
+				// 				} else {
+				// 					log.Printf("Whiteout file found %s from %s", deletedFile, hdr.Name)
+				// 				}
+				// 			}
+				// 		} else if hdr.Typeflag == tar.TypeReg {
+				// 			var buf bytes.Buffer
+				// 			_, err := io.Copy(&buf, tarReader)
+				// 			if err == nil {
+				// 				previousFiles[filepath.Base(hdr.Name)] = buf.Bytes()
+				// 			}
+				// 		}
+				// 	}
+				// 	tarF.Close()
 			}
 		}
 
@@ -201,6 +219,101 @@ func (image *ImageData) Store(options *StorageOptions) error {
 		}
 	}
 	return image.Error
+}
+
+func EnumLayer(image *ImageData, layerDir, layerRef string, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]byte) error {
+	crLayer, err := crane.PullLayer(layerRef, craneOpts...)
+	if err != nil {
+		return fmt.Errorf("pull failed for layer %s: %w", layerRef, err)
+	}
+
+	rc, err := crLayer.Compressed()
+	if err != nil {
+		return fmt.Errorf("failed to get compressed stream: %w", err)
+	}
+	defer rc.Close()
+
+	var tarReader *tar.Reader
+
+	if storageOptions.StoreTarballs {
+		tarPath := filepath.Join(layerDir, "filesystem.tar")
+		f, err := os.Create(tarPath)
+		if err != nil {
+			return fmt.Errorf("cannot create tarball: %w", err)
+		}
+		if _, err := io.Copy(f, rc); err != nil {
+			f.Close()
+			return fmt.Errorf("failed writing tarball: %w", err)
+		}
+		f.Close()
+
+		tarFile, err := os.Open(tarPath)
+		if err != nil {
+			return fmt.Errorf("cannot reopen tarball: %w", err)
+		}
+		defer tarFile.Close()
+
+		gzr, err := gzip.NewReader(tarFile)
+		if err != nil {
+			return fmt.Errorf("gzip decompress failed: %w", err)
+		}
+		tarReader = tar.NewReader(gzr)
+	} else {
+		gzr, err := gzip.NewReader(rc)
+		if err != nil {
+			return fmt.Errorf("gzip decompress failed: %w", err)
+		}
+		tarReader = tar.NewReader(gzr)
+	}
+
+	// Determine where to write restored files
+	var resultsDir string
+	resultsDir = filepath.Join(storageOptions.OutputPath, "results", securejoin(image.Registry, image.Repository, image.Tag))
+
+	if err := os.MkdirAll(resultsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create results dir: %w", err)
+	}
+
+	for {
+		hdr, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("Error reading tar entry: %v", err)
+			break
+		}
+
+		base := filepath.Base(hdr.Name)
+
+		if strings.HasPrefix(base, ".wh.") {
+			deletedFile := strings.TrimPrefix(base, ".wh.")
+			if data, ok := previousFiles[deletedFile]; ok {
+				restorePath := filepath.Join(resultsDir, deletedFile)
+				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
+					log.Printf("Failed to create dir for %s: %v", restorePath, err)
+					continue
+				}
+				restoreFile, err := os.Create(restorePath)
+				if err != nil {
+					log.Printf("Failed to create restore file %s: %v", restorePath, err)
+					continue
+				}
+				if _, err := restoreFile.Write(data); err != nil {
+					log.Printf("Error restoring file %s: %v", restorePath, err)
+				}
+				restoreFile.Close()
+				log.Printf("Restored whiteout-deleted file to %s", restorePath)
+			}
+		} else if hdr.Typeflag == tar.TypeReg {
+			var buf bytes.Buffer
+			if _, err := io.Copy(&buf, tarReader); err == nil {
+				previousFiles[filepath.Base(hdr.Name)] = buf.Bytes()
+			}
+		}
+	}
+
+	return nil
 }
 
 // EnumImage will read a specific image from a remote registry and returns the result asynchronously.
@@ -223,7 +336,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 
 		unparsedmanifest, err := crane.Manifest(ref, options...)
 		if err != nil {
-			log.Printf("Error fetching manifest for image %s: %s", ref, err)
+			LogError("Error fetching manifest for image %s: %s", ref, err)
 			result.Error = err
 		}
 
@@ -282,7 +395,7 @@ func EnumRepository(reg string, repo string, tags []string, options ...crane.Opt
 					log.Fatalf("Fatal: cannot reach registry for %s: %v", ref, err)
 				}
 
-				log.Printf("Error listing tags for %s: %s", ref, err)
+				LogError("Error listing tags for %s: %s", ref, err)
 				out <- &ImageData{
 					Reference:  ref,
 					Registry:   reg,
@@ -327,8 +440,8 @@ func EnumRegistry(reg string, repos []string, tags []string, options ...crane.Op
 			repos, err = crane.Catalog(reg, options...)
 			// log.Print(repos)
 			if err != nil {
-				log.Printf("Error listing repos for %s: (%T) %s", reg, err, err)
-				log.Printf("Catalog API not available. Falling back to brute force enumeration.")
+				LogError("Error listing repos for %s: (%T) %s", reg, err, err)
+				LogWarn("Catalog API not available. Falling back to brute force enumeration.")
 				repos = bruteForceTags(reg, bruteForceFile, options...)
 			}
 		}

@@ -39,9 +39,9 @@ func init() {
 
 	// Storage config options
 	storageFlags := pflag.NewFlagSet("Storage Options", pflag.ContinueOnError)
-	storageFlags.StringVarP(&outputPath, "output", "o", "", "Directory to store output. Required with --store-images.")
+	storageFlags.StringVarP(&outputPath, "output", "o", ".", "Directory to store output. Required with --store-images.")
 	storageFlags.BoolVarP(&storeImages, "store-images", "s", false, "Download and store image filesystems.")
-	storageFlags.StringVarP(&cachePath, "cache", "c", "", "Path to cache image layers.")
+	storageFlags.StringVarP(&cachePath, "cache", "c", ".", "Path to cache image layers.")
 	rootCmd.PersistentFlags().AddFlagSet(storageFlags)
 
 	// Analysis config options
@@ -73,11 +73,12 @@ func NormalizeFlags() {
 	if truffleHog && !storeImages {
 		storeImages = true
 	}
-	if whiteOut && outputPath == "" {
-		log.Println("⚠️  --whiteout was set without --output or -o. Output will go to stdout only.")
+	if whiteOut && outputPath == "." {
+		log.Println("⚠️  --whiteout was set without --output or -o. Layers will be processed in memory.")
 	}
-	if storeImages && outputPath == "" {
-		log.Fatalf("--store-images requires --output or -o path to write image files")
+	if storeImages && outputPath == "." {
+		outputPath = "."
+		pillage.LogWarn("--store-images requires output. Setting it to the current directory")
 	}
 }
 
@@ -90,9 +91,6 @@ func run(_ *cobra.Command, registries []string) {
 
 	craneoptions := pillage.MakeCraneOptions(insecure)
 
-	if storeImages && outputPath == "" {
-		log.Fatalf("Cannot pull images without destination path. Unset --pull-images or set --results")
-	}
 	storageOptions := &pillage.StorageOptions{
 		StoreImages:  storeImages,
 		CachePath:    cachePath,
@@ -108,7 +106,7 @@ func run(_ *cobra.Command, registries []string) {
 
 	for image := range images {
 
-		if outputPath == "" {
+		if outputPath == "." && !whiteOut {
 			results = append(results, image)
 		} else {
 			wg.Add()

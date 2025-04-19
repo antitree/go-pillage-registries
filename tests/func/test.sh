@@ -10,6 +10,7 @@ tests=(
   "-r skaffold -0"
   "-r skaffold -c /tmp/cache"
   "-r skaffold"
+  "-s -r keys -o ./tmp/test6 -0"  # New test for the keys image
 )
 
 cleanup() {
