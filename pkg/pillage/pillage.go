@@ -72,10 +72,10 @@ func securejoin(paths ...string) (out string) {
 }
 
 func (image *ImageData) Store(options *StorageOptions) error {
-	log.Printf("Storing results for image: %s", image.Reference)
+	log.Printf("Pulling image layers for: %s", image.Reference)
 	var imagePath string
 
-	if options.CachePath == "" {
+	if options.CachePath == "." {
 		tmpDir, err := os.MkdirTemp("", "pilreg-tmp-")
 		if err != nil {
 			fmt.Println("Failed to create temp dir:", err)
@@ -269,10 +269,12 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, storageOptions *Stor
 	// Determine where to write restored files
 	var resultsDir string
 	resultsDir = filepath.Join(storageOptions.OutputPath, "results", securejoin(image.Registry, image.Repository, image.Tag))
+	// Prepare the output path, but delay creation until needed
+	createdResultsDir := false
 
-	if err := os.MkdirAll(resultsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create results dir: %w", err)
-	}
+	// if err := os.MkdirAll(resultsDir, 0755); err != nil {
+	// 	return fmt.Errorf("failed to create results dir: %w", err)
+	// }
 
 	for {
 		hdr, err := tarReader.Next()
@@ -289,11 +291,20 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, storageOptions *Stor
 		if strings.HasPrefix(base, ".wh.") {
 			deletedFile := strings.TrimPrefix(base, ".wh.")
 			if data, ok := previousFiles[deletedFile]; ok {
+				if !createdResultsDir {
+					if err := os.MkdirAll(resultsDir, 0755); err != nil {
+						log.Printf("Failed to create dir for results: %v", err)
+						continue
+					}
+					createdResultsDir = true
+				}
+
 				restorePath := filepath.Join(resultsDir, deletedFile)
 				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
 					log.Printf("Failed to create dir for %s: %v", restorePath, err)
 					continue
 				}
+
 				restoreFile, err := os.Create(restorePath)
 				if err != nil {
 					log.Printf("Failed to create restore file %s: %v", restorePath, err)
@@ -303,8 +314,10 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, storageOptions *Stor
 					log.Printf("Error restoring file %s: %v", restorePath, err)
 				}
 				restoreFile.Close()
+
 				log.Printf("Restored whiteout-deleted file to %s", restorePath)
 			}
+
 		} else if hdr.Typeflag == tar.TypeReg {
 			var buf bytes.Buffer
 			if _, err := io.Copy(&buf, tarReader); err == nil {
@@ -363,6 +376,12 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 		config, err := crane.Config(ref, options...)
 		if err != nil {
 			log.Printf("Error fetching config for image %s: %s (the config may be in the manifest itself)", ref, err)
+
+			errStr := err.Error()
+			if strings.Contains(errStr, "TOOMANYREQUESTS") ||
+				strings.Contains(errStr, "Rate exceeded") {
+				log.Fatalf("Fatal: rate limited on %s: %v", ref, err)
+			}
 		}
 		result.Config = string(config)
 
