@@ -133,9 +133,7 @@ func run(_ *cobra.Command, registries []string) {
 		}
 
 		if truffleHog && CheckTrufflehogInstalled() {
-			log.Printf("Running trufflehog against the images...")
-			pillage.RunTruffleHog(image)
-
+			go pillage.RunTruffleHog(image)
 		}
 
 	}
