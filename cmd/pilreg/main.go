@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/remeh/sizedwaitgroup"
 
@@ -73,6 +74,18 @@ func NormalizeFlags() {
 	if truffleHog && !storeImages {
 		storeImages = true
 	}
+
+	for i, repo := range repos {
+		//name := repo
+		//tag := "latest" // default fallback
+
+		if strings.Contains(repo, ":") {
+			parts := strings.SplitN(repo, ":", 2)
+			repos[i] = parts[0]
+			tags = append(tags, parts[1])
+		}
+	}
+
 	if whiteOut && outputPath == "." {
 		log.Println("⚠️  --whiteout was set without --output or -o. Layers will be processed in memory.")
 	}
