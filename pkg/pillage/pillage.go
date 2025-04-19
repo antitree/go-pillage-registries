@@ -41,11 +41,12 @@ type Manifest struct {
 }
 
 type StorageOptions struct {
-	CachePath    string
-	ResultsPath  string
-	StoreImages  bool
-	CraneOptions []crane.Option
-	FilterSmall  bool
+	CachePath     string
+	OutputPath    string
+	StoreImages   bool
+	CraneOptions  []crane.Option
+	FilterSmall   bool
+	StoreTarballs bool
 }
 
 //go:embed default_config.json
@@ -72,7 +73,7 @@ func securejoin(paths ...string) (out string) {
 
 func (image *ImageData) Store(options *StorageOptions) error {
 	log.Printf("Storing results for image: %s", image.Reference)
-	imagePath := filepath.Join(options.ResultsPath, securejoin(image.Registry, image.Repository, image.Tag))
+	imagePath := filepath.Join(options.OutputPath, securejoin(image.Registry, image.Repository, image.Tag))
 
 	// Why? Shouldn't we move this decision later?
 	err := os.MkdirAll(imagePath, os.ModePerm)

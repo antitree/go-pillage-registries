@@ -13,6 +13,7 @@ import (
 
 	"github.com/antitree/go-pillage-registries/pkg/pillage"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var (
@@ -23,25 +24,38 @@ var (
 	storeImages bool
 	registry    string
 	cachePath   string
-	resultsPath string
+	outputPath  string
 	workerCount int
 	truffleHog  bool
 	whiteOut    bool
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringSliceVarP(&repos, "repos", "r", []string{}, "list of repositories to scan on the registry. If blank, pilreg will attempt to enumerate them using the catalog API")
-	rootCmd.PersistentFlags().StringSliceVarP(&tags, "tags", "t", []string{}, "list of tags to scan on each repository. If blank, pilreg will attempt to enumerate them using the tags API")
+	// Registry config options
+	scanFlags := pflag.NewFlagSet("Scan Options", pflag.ContinueOnError)
+	scanFlags.StringSliceVarP(&repos, "repos", "r", []string{}, "List of repositories to scan. If blank, uses the registry's catalog API.")
+	scanFlags.StringSliceVarP(&tags, "tags", "t", []string{}, "List of tags to scan per repository. If blank, uses the tags API.")
+	rootCmd.PersistentFlags().AddFlagSet(scanFlags)
 
-	rootCmd.PersistentFlags().StringVarP(&resultsPath, "results", "o", "", "Path to directory for storing results. If blank, outputs configs and manifests as json object to Stdout.(must be used if 'store-images` is enabled)")
-	rootCmd.PersistentFlags().BoolVarP(&skiptls, "skip-tls", "k", false, "Disables TLS certificate verification")
-	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "Fetch Data over plaintext")
-	rootCmd.PersistentFlags().BoolVarP(&storeImages, "store-images", "s", false, "Downloads filesystem for discovered images and stores an archive in the output directory (Disabled by default, requires --results to be set)")
-	rootCmd.PersistentFlags().StringVarP(&cachePath, "cache", "c", "", "Path to cache image layers (optional, only used if images are pulled)")
-	rootCmd.PersistentFlags().IntVarP(&workerCount, "workers", "w", 8, "Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled)")
-	rootCmd.PersistentFlags().BoolVarP(&truffleHog, "trufflehog", "x", false, "Integrate with Trufflehog to scan the images once they are found")
-	rootCmd.PersistentFlags().BoolVarP(&whiteOut, "whiteout", "0", false, "Hunt for hidden or sensitive layers that were deleted")
-	// rootCmd.PersistentFlags().StringVar(&bruteForceConfigFile, "config", "", "Path to brute force config JSON file (optional)")
+	// Storage config options
+	storageFlags := pflag.NewFlagSet("Storage Options", pflag.ContinueOnError)
+	storageFlags.StringVarP(&outputPath, "output", "o", "", "Directory to store output. Required with --store-images.")
+	storageFlags.BoolVarP(&storeImages, "store-images", "s", false, "Download and store image filesystems.")
+	storageFlags.StringVarP(&cachePath, "cache", "c", "", "Path to cache image layers.")
+	rootCmd.PersistentFlags().AddFlagSet(storageFlags)
+
+	// Analysis config options
+	analysisFlags := pflag.NewFlagSet("Analysis Options", pflag.ContinueOnError)
+	analysisFlags.BoolVarP(&truffleHog, "trufflehog", "x", false, "Scan image contents with TruffleHog.")
+	analysisFlags.BoolVarP(&whiteOut, "whiteout", "0", false, "Look for deleted/whiteout files in image layers.")
+	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
+
+	// Connection options
+	connFlags := pflag.NewFlagSet("Connection/Runtime Options", pflag.ContinueOnError)
+	connFlags.BoolVarP(&skiptls, "skip-tls", "k", false, "Disable TLS verification.")
+	connFlags.BoolVarP(&insecure, "insecure", "i", false, "Use HTTP instead of HTTPS.")
+	connFlags.IntVarP(&workerCount, "workers", "w", 8, "Number of concurrent workers.")
+	rootCmd.PersistentFlags().AddFlagSet(connFlags)
 }
 
 var rootCmd = &cobra.Command{
@@ -51,20 +65,38 @@ var rootCmd = &cobra.Command{
 	Run:   run,
 }
 
+// NormalizeFlags applies implicit behavior for CLI combinations.
+func NormalizeFlags() {
+	if cachePath != "" && !storeImages {
+		storeImages = true
+	}
+	if truffleHog && !storeImages {
+		storeImages = true
+	}
+	if whiteOut && outputPath == "" {
+		log.Println("⚠️  --whiteout was set without --output or -o. Output will go to stdout only.")
+	}
+	if storeImages && outputPath == "" {
+		log.Fatalf("--store-images requires --output or -o path to write image files")
+	}
+}
+
 func run(_ *cobra.Command, registries []string) {
+	NormalizeFlags()
+
 	if skiptls {
 		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	craneoptions := pillage.MakeCraneOptions(insecure)
 
-	if storeImages && resultsPath == "" {
+	if storeImages && outputPath == "" {
 		log.Fatalf("Cannot pull images without destination path. Unset --pull-images or set --results")
 	}
 	storageOptions := &pillage.StorageOptions{
 		StoreImages:  storeImages,
 		CachePath:    cachePath,
-		ResultsPath:  resultsPath,
+		OutputPath:   outputPath,
 		CraneOptions: craneoptions,
 		FilterSmall:  whiteOut,
 	}
@@ -76,7 +108,7 @@ func run(_ *cobra.Command, registries []string) {
 
 	for image := range images {
 
-		if resultsPath == "" {
+		if outputPath == "" {
 			results = append(results, image)
 		} else {
 			wg.Add()
@@ -96,7 +128,7 @@ func run(_ *cobra.Command, registries []string) {
 
 	wg.Wait()
 
-	if resultsPath == "" {
+	if outputPath == "" {
 		out, err := json.Marshal(results)
 		if err != nil {
 			log.Fatalf("error formatting results for %s: %v", registry, err)
@@ -113,6 +145,45 @@ func CheckTrufflehogInstalled() bool {
 		return false
 	}
 	return true
+}
+
+// SetHelpFunc prints grouped help output for categorized flags
+func init() {
+	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		fmt.Println("\n Scan:")
+		printFlags(cmd, []string{"repos", "tags"})
+
+		fmt.Println("\n Storage:")
+		printFlags(cmd, []string{"results", "store-images", "cache"})
+
+		fmt.Println("\n Secret Hunting:(assumes storage above)")
+		printFlags(cmd, []string{"trufflehog", "whiteout"})
+
+		fmt.Println("\nOther options:")
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			if !contains([]string{"repos", "tags", "results", "store-images", "cache", "trufflehog", "whiteout"}, f.Name) {
+				fmt.Printf("  --%s	%s\n", f.Name, f.Usage)
+			}
+		})
+	})
+}
+
+func printFlags(cmd *cobra.Command, names []string) {
+	for _, name := range names {
+		flag := cmd.Flag(name)
+		if flag != nil {
+			fmt.Printf("  --%s	%s\n", flag.Name, flag.Usage)
+		}
+	}
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
 
 func main() {
