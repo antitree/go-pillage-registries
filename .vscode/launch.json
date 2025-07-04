@@ -27,7 +27,7 @@
             "${workspaceFolder}/vendor/**", // skips vendored deps
             "**/pkg/mod/**"        // skips Go module cache
         ],
-        "args": ["127.0.0.1:5000", "-r", "whiteout", "-t", "latest", "-0"],
+        "args": ["127.0.0.1:5000", "-r", "white:latest", "--whiteout"],
       }
     ]
 }

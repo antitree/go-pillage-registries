@@ -114,9 +114,9 @@ func (image *ImageData) Store(options *StorageOptions) error {
 			var previousFiles = make(map[string][]FileVersion)
 			for idx, layer := range parsed.Layers {
 				// whiteout files are small
-				if layer.Size > options.FilterSmall {
-					continue
-				}
+				// if layer.Size > options.FilterSmall {
+				// 	continue
+				// }
 
 				layerDir := filepath.Join(imagePath, strings.ReplaceAll(layer.Digest, ":", "_"))
 
@@ -237,6 +237,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 		base := filepath.Base(hdr.Name)
 
 		if strings.HasPrefix(base, ".wh.") {
+			log.Print("Fucking whiteout file detected: ", hdr.Name)
 			deletedPath := filepath.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
 			deletedPath = strings.TrimPrefix(deletedPath, string(filepath.Separator))
 
@@ -278,6 +279,8 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 			if versions, ok := previousFiles[deletedPath]; ok && len(versions) > 0 {
 				data := versions[len(versions)-1].Data
 				restoreFile(deletedPath, data)
+			} else {
+				log.Printf("No previous version found for deleted file %s", deletedPath)
 			}
 
 			// Restore any files contained in a deleted directory
@@ -286,14 +289,20 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				if strings.HasPrefix(name, prefix) && len(versions) > 0 {
 					data := versions[len(versions)-1].Data
 					restoreFile(name, data)
+				} else {
+					log.Printf("No previous version found for deleted directory file %s", name)
 				}
 			}
 
-		} else if hdr.Typeflag == tar.TypeReg {
+			//} else if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeDir {
+		} else {
 			var buf bytes.Buffer
 			if _, err := io.Copy(&buf, tarReader); err == nil {
 				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
 				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
+			} else {
+				log.Printf("Error reading file %s from tar: %v", hdr.Name, err)
+				continue
 			}
 		}
 	}
