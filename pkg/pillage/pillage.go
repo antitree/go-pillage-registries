@@ -60,6 +60,12 @@ type BruteForceConfig struct {
 	Names []string `json:"names"`
 }
 
+// FileVersion tracks the bytes of a file and the layer it was found in.
+type FileVersion struct {
+	Layer int
+	Data  []byte
+}
+
 func MakeCraneOptions(insecure bool) (options []crane.Option) {
 	if insecure {
 		options = append(options, crane.Insecure)
@@ -105,7 +111,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 				return err
 			}
 
-			var previousFiles = make(map[string][]byte)
+			var previousFiles = make(map[string][]FileVersion)
 			for idx, layer := range parsed.Layers {
 				// whiteout files are small
 				if layer.Size > options.FilterSmall {
@@ -142,7 +148,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 	return image.Error
 }
 
-func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]byte) error {
+func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]FileVersion) error {
 	crLayer, err := crane.PullLayer(layerRef, craneOpts...)
 	if err != nil {
 		return fmt.Errorf("pull failed for layer %s: %w", layerRef, err)
@@ -231,8 +237,10 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 		base := filepath.Base(hdr.Name)
 
 		if strings.HasPrefix(base, ".wh.") {
-			deletedFile := strings.TrimPrefix(base, ".wh.")
-			if data, ok := previousFiles[deletedFile]; ok {
+			deletedFile := filepath.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
+			deletedFile = strings.TrimPrefix(deletedFile, string(filepath.Separator))
+			if versions, ok := previousFiles[deletedFile]; ok && len(versions) > 0 {
+				data := versions[len(versions)-1].Data
 				if !createdResultsDir {
 					if err := os.MkdirAll(resultsDir, 0755); err != nil {
 						log.Printf("Failed to create dir for results: %v", err)
@@ -263,7 +271,8 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 		} else if hdr.Typeflag == tar.TypeReg {
 			var buf bytes.Buffer
 			if _, err := io.Copy(&buf, tarReader); err == nil {
-				previousFiles[filepath.Base(hdr.Name)] = buf.Bytes()
+				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
+				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
 			}
 		}
 	}
