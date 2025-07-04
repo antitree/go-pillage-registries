@@ -1,20 +1,24 @@
 package pillage
 
 import (
+	"archive/tar"
 	"bytes"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/cache"
 )
 
@@ -61,6 +65,92 @@ func securejoin(paths ...string) (out string) {
 		out = filepath.Join(out, filepath.Clean("/"+path))
 	}
 	return out
+}
+
+// searchFileInLayers looks for a specific file path in the layers slice
+// starting from the layer index 'start' and walking backwards. It returns
+// the file contents when found.
+func searchFileInLayers(layers []v1.Layer, start int, target string) ([]byte, error) {
+	for i := start; i >= 0; i-- {
+		rc, err := layers[i].Uncompressed()
+		if err != nil {
+			return nil, err
+		}
+		tr := tar.NewReader(rc)
+		for {
+			hdr, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				rc.Close()
+				return nil, err
+			}
+			if path.Clean(hdr.Name) == target {
+				data, err := io.ReadAll(tr)
+				rc.Close()
+				if err != nil {
+					return nil, err
+				}
+				return data, nil
+			}
+		}
+		rc.Close()
+	}
+	return nil, fmt.Errorf("file %s not found in previous layers", target)
+}
+
+// recoverWhiteouts iterates over an image's layers and attempts to recover the
+// original content for files deleted via whiteouts. Recovered files are written
+// under the provided destination directory inside a "whiteout_recovery" folder.
+func recoverWhiteouts(img v1.Image, dest string) error {
+	layers, err := img.Layers()
+	if err != nil {
+		return err
+	}
+
+	for i := len(layers) - 1; i >= 0; i-- {
+		rc, err := layers[i].Uncompressed()
+		if err != nil {
+			log.Printf("Error reading layer %d: %v", i, err)
+			continue
+		}
+
+		tr := tar.NewReader(rc)
+		for {
+			hdr, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				rc.Close()
+				return err
+			}
+
+			base := filepath.Base(hdr.Name)
+			if strings.HasPrefix(base, ".wh.") {
+				target := path.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
+				data, err := searchFileInLayers(layers, i-1, path.Clean(target))
+				if err != nil {
+					continue
+				}
+
+				outPath := filepath.Join(dest, securejoin("whiteout_recovery", target))
+				if err := os.MkdirAll(filepath.Dir(outPath), os.ModePerm); err != nil {
+					log.Printf("Error creating dir for %s: %v", outPath, err)
+					continue
+				}
+				if err := ioutil.WriteFile(outPath, data, os.ModePerm); err != nil {
+					log.Printf("Error writing recovered file %s: %v", outPath, err)
+				} else {
+					log.Printf("Recovered deleted file %s", outPath)
+				}
+			}
+		}
+		rc.Close()
+	}
+
+	return nil
 }
 
 // Store will output the information enumerated from an image to an output directory and optionally will pull the image filesystems as well
@@ -116,6 +206,10 @@ func (image *ImageData) Store(options *StorageOptions) error {
 			} else {
 				image.Error = errors.New(image.Error.Error() + err.Error())
 			}
+		}
+
+		if err := recoverWhiteouts(fs, imagePath); err != nil {
+			log.Printf("Error recovering whiteouts: %v", err)
 		}
 	}
 
