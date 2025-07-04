@@ -106,7 +106,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 			}
 
 			var previousFiles = make(map[string][]byte)
-			for _, layer := range parsed.Layers {
+			for idx, layer := range parsed.Layers {
 				// whiteout files are small
 				if layer.Size > options.FilterSmall {
 					continue
@@ -122,12 +122,11 @@ func (image *ImageData) Store(options *StorageOptions) error {
 
 				layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
 
-				err = EnumLayer(image, layerDir, layerRef, options, options.CraneOptions, previousFiles)
+				err = EnumLayer(image, layerDir, layerRef, idx+1, options, options.CraneOptions, previousFiles)
 				if err != nil {
 					LogWarn("Failed processing layer %s: %v", layer.Digest, err)
 					continue
 				}
-
 			}
 		}
 
@@ -143,7 +142,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 	return image.Error
 }
 
-func EnumLayer(image *ImageData, layerDir, layerRef string, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]byte) error {
+func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]byte) error {
 	crLayer, err := crane.PullLayer(layerRef, craneOpts...)
 	if err != nil {
 		return fmt.Errorf("pull failed for layer %s: %w", layerRef, err)
@@ -242,7 +241,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, storageOptions *Stor
 					createdResultsDir = true
 				}
 
-				restorePath := filepath.Join(resultsDir, deletedFile)
+				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", deletedFile, layerNumber))
 				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
 					log.Printf("Failed to create dir for %s: %v", restorePath, err)
 					continue
