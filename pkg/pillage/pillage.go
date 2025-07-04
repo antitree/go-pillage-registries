@@ -237,35 +237,56 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 		base := filepath.Base(hdr.Name)
 
 		if strings.HasPrefix(base, ".wh.") {
-			deletedFile := filepath.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
-			deletedFile = strings.TrimPrefix(deletedFile, string(filepath.Separator))
-			if versions, ok := previousFiles[deletedFile]; ok && len(versions) > 0 {
-				data := versions[len(versions)-1].Data
-				if !createdResultsDir {
-					if err := os.MkdirAll(resultsDir, 0755); err != nil {
-						log.Printf("Failed to create dir for results: %v", err)
-						continue
-					}
-					createdResultsDir = true
-				}
+			deletedPath := filepath.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
+			deletedPath = strings.TrimPrefix(deletedPath, string(filepath.Separator))
 
-				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", deletedFile, layerNumber))
+			// Helper to create the results directory once
+			ensureResultsDir := func() bool {
+				if createdResultsDir {
+					return true
+				}
+				if err := os.MkdirAll(resultsDir, 0755); err != nil {
+					log.Printf("Failed to create dir for results: %v", err)
+					return false
+				}
+				createdResultsDir = true
+				return true
+			}
+
+			restoreFile := func(name string, data []byte) {
+				if !ensureResultsDir() {
+					return
+				}
+				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", name, layerNumber))
 				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
 					log.Printf("Failed to create dir for %s: %v", restorePath, err)
-					continue
+					return
 				}
-
-				restoreFile, err := os.Create(restorePath)
+				f, err := os.Create(restorePath)
 				if err != nil {
 					log.Printf("Failed to create restore file %s: %v", restorePath, err)
-					continue
+					return
 				}
-				if _, err := restoreFile.Write(data); err != nil {
+				if _, err := f.Write(data); err != nil {
 					log.Printf("Error restoring file %s: %v", restorePath, err)
 				}
-				restoreFile.Close()
-
+				f.Close()
 				log.Printf("Restored whiteout-deleted file to %s", restorePath)
+			}
+
+			// Restore a single file if present
+			if versions, ok := previousFiles[deletedPath]; ok && len(versions) > 0 {
+				data := versions[len(versions)-1].Data
+				restoreFile(deletedPath, data)
+			}
+
+			// Restore any files contained in a deleted directory
+			prefix := deletedPath + string(filepath.Separator)
+			for name, versions := range previousFiles {
+				if strings.HasPrefix(name, prefix) && len(versions) > 0 {
+					data := versions[len(versions)-1].Data
+					restoreFile(name, data)
+				}
 			}
 
 		} else if hdr.Typeflag == tar.TypeReg {
