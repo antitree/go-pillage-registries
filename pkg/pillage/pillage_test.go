@@ -21,7 +21,7 @@ func TestMakeCraneOptions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if gotOptions := MakeCraneOptions(tt.args.insecure); !reflect.DeepEqual(gotOptions, tt.wantOptions) {
+			if gotOptions := MakeCraneOptions(tt.args.insecure, nil); !reflect.DeepEqual(gotOptions, tt.wantOptions) {
 				t.Errorf("MakeCraneOptions() = %v, want %v", gotOptions, tt.wantOptions)
 			}
 		})
