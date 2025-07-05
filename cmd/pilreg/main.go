@@ -36,7 +36,7 @@ var (
 )
 
 var (
-	version   = "dev"
+	version   = "2.0"
 	buildDate = "unknown"
 )
 
@@ -208,7 +208,7 @@ func init() {
 		fmt.Println("Examples:")
 		fmt.Println("  pilreg 127.0.0.1:5000 -a")
 		fmt.Println("  pilreg 127.0.0.1:5000 --repos nginx --tags latest,stable")
-		fmt.Println("  pilreg gcr.io --repos <project>/<my image>:latest")
+		fmt.Println("  pilreg <registry> --repos <project>/<my image>:latest")
 		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout")
 		fmt.Println("  pilreg <registry> --trufflehog")
 
