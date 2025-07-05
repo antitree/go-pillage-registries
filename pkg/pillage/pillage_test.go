@@ -45,9 +45,8 @@ func TestMakeCraneOptions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := MakeCraneOptions(tt.args.insecure)
-			if len(got) != tt.want {
-				t.Errorf("expected %d options got %d", tt.want, len(got))
+			if gotOptions := MakeCraneOptions(tt.args.insecure, nil); !reflect.DeepEqual(gotOptions, tt.wantOptions) {
+				t.Errorf("MakeCraneOptions() = %v, want %v", gotOptions, tt.wantOptions)
 			}
 		})
 	}
