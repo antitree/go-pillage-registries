@@ -53,6 +53,12 @@ docker push ${KEYS_IMAGE} || {
     exit 1
 }
 
+echo "Saving keys image to example/keys.tar for local tests..."
+docker save ${KEYS_IMAGE} -o example/keys.tar || {
+    echo "Failed to save keys image tarball"
+    exit 1
+}
+
 echo "Setup complete. Images available:"
 echo "  ${LOCAL_IMAGE}"
 echo "  ${KEYS_IMAGE}"

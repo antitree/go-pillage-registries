@@ -203,9 +203,9 @@ func CheckTrufflehogInstalled() bool {
 func init() {
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		fmt.Print("Usage: pilreg [OPTIONS] <registry>\n\n")
-		fmt.Println("pilreg is penetration testing tool targeting container images hosted in a registry or in a tar ball.\n")
+		fmt.Println("pilreg is penetration testing tool targeting container images hosted in a registry or in a tar ball.")
 
-		fmt.Println("Examples:\n")
+		fmt.Println("Examples:")
 		fmt.Println("  pilreg 127.0.0.1:5000 -a")
 		fmt.Println("  pilreg 127.0.0.1:5000 --repos nginx --tags latest,stable")
 		fmt.Println("  pilreg gcr.io --repos <project>/<my image>:latest")
