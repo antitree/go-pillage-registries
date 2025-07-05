@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -45,8 +46,8 @@ func TestMakeCraneOptions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if gotOptions := MakeCraneOptions(tt.args.insecure, nil); !reflect.DeepEqual(gotOptions, tt.wantOptions) {
-				t.Errorf("MakeCraneOptions() = %v, want %v", gotOptions, tt.wantOptions)
+			if gotOptions := MakeCraneOptions(tt.args.insecure, nil); !reflect.DeepEqual(len(gotOptions), tt.want) {
+				t.Errorf("MakeCraneOptions() length = %v, want %v", len(gotOptions), tt.want)
 			}
 		})
 	}

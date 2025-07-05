@@ -64,7 +64,7 @@ func init() {
 	analysisFlags := pflag.NewFlagSet("Analysis Options", pflag.ContinueOnError)
 	analysisFlags.BoolVarP(&truffleHog, "trufflehog", "x", false, "Scan image contents with TruffleHog.")
 	analysisFlags.BoolVarP(&whiteOut, "whiteout", "w", false, "Look for deleted/whiteout files in image layers.")
-	analysisFlags.BoolVarP(&all, "all", "a", false, "Enable all analysis options by default. (Very noisy!)")
+	analysisFlags.BoolVarP(&all, "all", "a", true, "Enable all analysis options by default. (Very noisy!)")
 
 	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
 
@@ -225,8 +225,9 @@ func init() {
 
 		fmt.Println("Examples:")
 		fmt.Println("  pilreg 127.0.0.1:5000 -a")
-		fmt.Println("  pilreg 127.0.0.1:5000 --repos nginx --tags latest,stable")
-		fmt.Println("  pilreg <registry> --repos <project>/<my image>:latest")
+		fmt.Println("  pilreg <registry> --repos nginx --tags latest,stable")
+		fmt.Println("  pilreg <registry> --repos test/nginx:latest")
+		fmt.Println("  pilreg ghcr.io --repos <gh username>/<repo>/<package/image> --username --token <PAT> -a")
 		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout")
 		fmt.Println("  pilreg <registry> --trufflehog")
 

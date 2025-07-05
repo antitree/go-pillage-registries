@@ -20,20 +20,26 @@ go install ./...
 ## Usage:
 
 ```
-$ pilreg
-Usage:
-  pilreg <registry> [flags]
+Usage: pilreg <registry> | -l <tarbalpath> [OPTIONS]
 
- Registry config options:
+pilreg is penetration testing tool targeting container images hosted in a registry or in a tar ball.
+Examples:
+  pilreg 127.0.0.1:5000 -a
+  pilreg 127.0.0.1:5000 --repos nginx --tags latest,stable
+  pilreg <registry> --repos <project>/<my image>:latest
+  pilreg --local <path/to/tarball.tar> --whiteout
+  pilreg 
+  pilreg <registry> --trufflehog
+
+ Registry/Local config options:
   --repos	List of repositories to scan. If blank, uses the registry's catalog API.
   --tags	List of tags to scan per repository. If blank, uses the tags API.
-  --local string     Path to a local image tarball to scan
+  --local	Path to a local image tarball to scan.
 
  Storage config options:
-  --output	Directory to store output. Required with --store-images.
+  --output	Directory to store output. Required with --store-images.(./results/ by default)
   --store-images	Download and store image filesystems.
-  --cache	Path to cache image layers.
-  --small	Filter analysis on layers that are this size in bytes. (Default 40k)
+  --cache	Path to cache image layers. (/tmp by default)
 
  Analysis config options:
   --trufflehog	Scan image contents with TruffleHog.
@@ -42,11 +48,12 @@ Usage:
  Connection options:
   --skip-tls	Disable TLS verification.
   --insecure	Use HTTP instead of HTTPS.
-  --token       Bearer token or password for registry auth.
-  --username    Username for token auth. If omitted with --token, defaults to `pilreg`.
-  --workers     Number of concurrent workers.
+  --token	Registry bearer token or password
+  --username	Username for token auth
+  --workers	Number of concurrent workers.
+
   --version	Print version information and exit.
-  --debug       Enable debug logging.
+  --debug	Enable debug logging.
 ```
 If `--local` is not provided and the value for `<registry>` ends with a common tarball extension such as `.tar`, `.tar.gz`, or `.tgz`, `pilreg` will automatically switch to local mode and scan that file.
 
