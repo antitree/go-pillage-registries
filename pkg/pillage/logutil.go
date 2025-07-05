@@ -4,6 +4,13 @@ import (
 	"log"
 )
 
+var debugEnabled bool
+
+// SetDebug enables or disables debug logging.
+func SetDebug(enabled bool) {
+	debugEnabled = enabled
+}
+
 const (
 	colorReset  = "\033[0m"
 	colorRed    = "\033[31m"
@@ -21,8 +28,9 @@ func LogWarn(format string, args ...interface{}) {
 }
 
 func LogDebug(format string, args ...interface{}) {
-	// Only log debug messages if debug mode is enabled
-	// This allows for more verbose output during development or troubleshooting
+	if !debugEnabled {
+		return
+	}
 	log.Printf(colorGray+"[DEBUG] "+format+colorReset, args...)
 }
 
