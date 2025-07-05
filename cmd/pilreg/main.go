@@ -74,7 +74,7 @@ func init() {
 	connFlags.BoolVarP(&skiptls, "skip-tls", "k", false, "Disable TLS verification.")
 	connFlags.BoolVarP(&insecure, "insecure", "i", false, "Use HTTP instead of HTTPS.")
 	connFlags.StringVar(&token, "token", "", "Registry bearer token or password")
-	connFlags.StringVar(&username, "username", "", "Username for token auth")
+	connFlags.StringVar(&username, "username", "", "Username for token auth (default 'pilreg' if omitted)")
 	connFlags.IntVar(&workerCount, "workers", 8, "Number of concurrent workers.")
 	connFlags.BoolVar(&showVersion, "version", false, "Print version information and exit.")
 	connFlags.BoolVar(&debug, "debug", false, "Enable debug logging.")
@@ -148,6 +148,10 @@ func run(cmd *cobra.Command, registries []string) {
 
 	var auth authn.Authenticator
 	if token != "" {
+		if username == "" {
+			username = "pilreg"
+			log.Println("⚠️  --token provided without --username; using 'pilreg'. Some registries require a username.")
+		}
 		auth = authn.FromConfig(authn.AuthConfig{Username: username, Password: token})
 	}
 

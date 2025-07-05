@@ -43,7 +43,7 @@ Usage:
   --skip-tls	Disable TLS verification.
   --insecure	Use HTTP instead of HTTPS.
   --token       Bearer token or password for registry auth.
-  --username    Username for token auth.
+  --username    Username for token auth. If omitted with --token, defaults to `pilreg`.
   --workers     Number of concurrent workers.
   --version	Print version information and exit.
   --debug       Enable debug logging.
