@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
@@ -33,6 +34,7 @@ type ImageData struct {
 	Manifest   string
 	Config     string
 	Error      error
+	Image      v1.Image
 }
 
 type Manifest struct {
@@ -82,7 +84,7 @@ func securejoin(paths ...string) (out string) {
 }
 
 func (image *ImageData) Store(options *StorageOptions) error {
-	log.Printf("Pulling image layers for: %s", image.Reference)
+	LogInfo("Pulling image layers for: %s", image.Reference)
 	var imagePath string
 
 	if options.CachePath == "." {
@@ -99,7 +101,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 
 	imagePath = filepath.Join(options.CachePath, securejoin(image.Registry, image.Repository, image.Tag))
 	if err := os.MkdirAll(imagePath, os.ModePerm); err != nil {
-		log.Printf("Error making storage path %s: %v", imagePath, err)
+		LogInfo("Error making storage path %s: %v", imagePath, err)
 		return err
 	}
 
@@ -108,11 +110,20 @@ func (image *ImageData) Store(options *StorageOptions) error {
 			var parsed Manifest
 			err := json.Unmarshal([]byte(image.Manifest), &parsed)
 			if err != nil {
-				log.Printf("Error parsing manifest JSON for filtering: %v", err)
+				LogInfo("Error parsing manifest JSON for filtering: %v", err)
 				return err
 			}
 
 			var previousFiles = make(map[string][]FileVersion)
+			var imgLayers []v1.Layer
+			if image.Image != nil {
+				imgLayers, err = image.Image.Layers()
+				if err != nil {
+					LogInfo("Failed to get layers: %v", err)
+					return err
+				}
+			}
+
 			for idx, layer := range parsed.Layers {
 				// whiteout files are small
 				// if layer.Size > options.FilterSmall {
@@ -123,13 +134,16 @@ func (image *ImageData) Store(options *StorageOptions) error {
 
 				err := os.MkdirAll(layerDir, 0755)
 				if err != nil {
-					log.Printf("Failed to create dir %s: %v", layerDir, err)
+					LogInfo("Failed to create dir %s: %v", layerDir, err)
 					continue
 				}
 
-				layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
-
-				err = EnumLayer(image, layerDir, layerRef, idx+1, options, options.CraneOptions, previousFiles)
+				if image.Image != nil {
+					err = EnumLayerFromLayer(image, layerDir, imgLayers[idx], idx+1, options, previousFiles)
+				} else {
+					layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
+					err = EnumLayer(image, layerDir, layerRef, idx+1, options, options.CraneOptions, previousFiles)
+				}
 				if err != nil {
 					LogWarn("Failed processing layer %s: %v", layer.Digest, err)
 					LogDebug("%s\n%s", image.Manifest, image.Config)
@@ -232,7 +246,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 			break
 		}
 		if err != nil {
-			log.Printf("Error reading tar entry: %v", err)
+			LogInfo("Error reading tar entry: %v", err)
 			break
 		}
 
@@ -249,7 +263,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 					return true
 				}
 				if err := os.MkdirAll(resultsDir, 0755); err != nil {
-					log.Printf("Failed to create dir for results: %v", err)
+					LogInfo("Failed to create dir for results: %v", err)
 					return false
 				}
 				createdResultsDir = true
@@ -262,19 +276,19 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				}
 				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", name, layerNumber))
 				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
-					log.Printf("Failed to create dir for %s: %v", restorePath, err)
+					LogInfo("Failed to create dir for %s: %v", restorePath, err)
 					return
 				}
 				f, err := os.Create(restorePath)
 				if err != nil {
-					log.Printf("Failed to create restore file %s: %v", restorePath, err)
+					LogInfo("Failed to create restore file %s: %v", restorePath, err)
 					return
 				}
 				if _, err := f.Write(data); err != nil {
-					log.Printf("Error restoring file %s: %v", restorePath, err)
+					LogInfo("Error restoring file %s: %v", restorePath, err)
 				}
 				f.Close()
-				log.Printf("Restored whiteout-deleted file to %s", restorePath)
+				LogInfo("Restored whiteout-deleted file to %s", restorePath)
 			}
 
 			// Restore a single file if present
@@ -282,7 +296,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				data := versions[len(versions)-1].Data
 				restoreFile(deletedPath, data)
 			} else {
-				log.Printf("No previous version found for deleted file %s", deletedPath)
+				LogWarn("No previous version found for deleted file %s", deletedPath)
 			}
 
 			// Restore any files contained in a deleted directory
@@ -292,7 +306,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 					data := versions[len(versions)-1].Data
 					restoreFile(name, data)
 				} else {
-					log.Printf("No previous version found for deleted directory file %s", name)
+					LogInfo("No previous version found for deleted directory file %s", name)
 				}
 			}
 
@@ -303,7 +317,150 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
 				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
 			} else {
-				log.Printf("Error reading file %s from tar: %v", hdr.Name, err)
+				LogInfo("Error reading file %s from tar: %v", hdr.Name, err)
+				continue
+			}
+		}
+	}
+
+	return nil
+}
+
+func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layerNumber int, storageOptions *StorageOptions, previousFiles map[string][]FileVersion) error {
+	rc, err := layer.Compressed()
+	if err != nil {
+		return fmt.Errorf("failed to get compressed stream: %w", err)
+	}
+	defer rc.Close()
+
+	var tarReader *tar.Reader
+
+	if storageOptions.StoreTarballs {
+		tarPath := filepath.Join(layerDir, "filesystem.tar")
+		f, err := os.Create(tarPath)
+		if err != nil {
+			return fmt.Errorf("cannot create tarball: %w", err)
+		}
+		if _, err := io.Copy(f, rc); err != nil {
+			f.Close()
+			return fmt.Errorf("failed writing tarball: %w", err)
+		}
+		f.Close()
+
+		tarFile, err := os.Open(tarPath)
+		if err != nil {
+			return fmt.Errorf("cannot reopen tarball: %w", err)
+		}
+		defer tarFile.Close()
+
+		gzr, err := gzip.NewReader(tarFile)
+		if err != nil {
+			return fmt.Errorf("gzip decompress failed: %w", err)
+		}
+		tarReader = tar.NewReader(gzr)
+	} else {
+		originalRC := rc
+		defer originalRC.Close()
+
+		buf := make([]byte, 2)
+		if _, err := io.ReadFull(rc, buf); err != nil {
+			return fmt.Errorf("peek error: %w", err)
+		}
+
+		rc = io.NopCloser(io.MultiReader(bytes.NewReader(buf), rc))
+
+		isGzip := buf[0] == 0x1f && buf[1] == 0x8b
+		if isGzip {
+			gzr, err := gzip.NewReader(rc)
+			if err != nil {
+				return fmt.Errorf("gzip decompress failed: %w", err)
+			}
+			defer gzr.Close()
+			tarReader = tar.NewReader(gzr)
+		} else {
+			tarReader = tar.NewReader(rc)
+		}
+
+	}
+
+	var resultsDir string
+	resultsDir = filepath.Join(storageOptions.OutputPath, "results", securejoin(image.Registry, image.Repository, image.Tag))
+	createdResultsDir := false
+
+	for {
+		hdr, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			LogInfo("Error reading tar entry: %v", err)
+			break
+		}
+
+		base := filepath.Base(hdr.Name)
+
+		if strings.HasPrefix(base, ".wh.") {
+			log.Print("Fucking whiteout file detected: ", hdr.Name)
+			deletedPath := filepath.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
+			deletedPath = strings.TrimPrefix(deletedPath, string(filepath.Separator))
+
+			ensureResultsDir := func() bool {
+				if createdResultsDir {
+					return true
+				}
+				if err := os.MkdirAll(resultsDir, 0755); err != nil {
+					LogInfo("Failed to create dir for results: %v", err)
+					return false
+				}
+				createdResultsDir = true
+				return true
+			}
+
+			restoreFile := func(name string, data []byte) {
+				if !ensureResultsDir() {
+					return
+				}
+				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", name, layerNumber))
+				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
+					LogInfo("Failed to create dir for %s: %v", restorePath, err)
+					return
+				}
+				f, err := os.Create(restorePath)
+				if err != nil {
+					LogInfo("Failed to create restore file %s: %v", restorePath, err)
+					return
+				}
+				if _, err := f.Write(data); err != nil {
+					LogInfo("Error restoring file %s: %v", restorePath, err)
+				}
+				f.Close()
+				LogInfo("Restored whiteout-deleted file to %s", restorePath)
+			}
+
+			if versions, ok := previousFiles[deletedPath]; ok && len(versions) > 0 {
+				data := versions[len(versions)-1].Data
+				restoreFile(deletedPath, data)
+			} else {
+				LogInfo("No previous version found for deleted file %s", deletedPath)
+			}
+
+			prefix := deletedPath + string(filepath.Separator)
+			for name, versions := range previousFiles {
+				if strings.HasPrefix(name, prefix) && len(versions) > 0 {
+					data := versions[len(versions)-1].Data
+					restoreFile(name, data)
+				} else {
+					LogInfo("No previous version found for deleted directory file %s", name)
+				}
+			}
+
+		} else {
+			var buf bytes.Buffer
+			if _, err := io.Copy(&buf, tarReader); err == nil {
+				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
+				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
+			} else {
+				LogInfo("Error reading file %s from tar: %v", hdr.Name, err)
 				continue
 			}
 		}
@@ -345,7 +502,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 
 		err = json.Unmarshal([]byte(unparsedmanifest), &manifest)
 		if err != nil {
-			log.Printf("Error parsing manifest for image %s: %s", ref, err)
+			LogInfo("Error parsing manifest for image %s: %s", ref, err)
 			result.Error = err
 		}
 
@@ -361,7 +518,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 
 		strManifest, err := json.MarshalIndent(manifest, "", "  ")
 		if err != nil {
-			log.Printf("Error fetching parsing Manifest for image %s: %s", ref, err)
+			LogInfo("Error fetching parsing Manifest for image %s: %s", ref, err)
 		}
 		result.Manifest = string(strManifest)
 
@@ -375,7 +532,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 		})
 		//config, err := crane.Config(ref, options...)
 		if err != nil {
-			log.Printf("Error fetching config for image %s: %s (the config may be in the manifest itself)", ref, err)
+			LogInfo("Error fetching config for image %s: %s (the config may be in the manifest itself)", ref, err)
 
 			errStr := err.Error()
 			if strings.Contains(errStr, "TOOMANYREQUESTS") ||
@@ -397,7 +554,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 func EnumRepository(reg string, repo string, tags []string, options ...crane.Option) <-chan *ImageData {
 	out := make(chan *ImageData)
 	ref := fmt.Sprintf("%s/%s", reg, repo)
-	log.Printf("Repo: %s", ref)
+	LogInfo("Repo: %s", ref)
 
 	go func(ref string) {
 		defer close(out)
@@ -448,7 +605,7 @@ func EnumRepository(reg string, repo string, tags []string, options ...crane.Opt
 // If lists of repositories and tags are not supplied, lists will be enumerated from the registry's API.
 func EnumRegistry(reg string, repos []string, tags []string, options ...crane.Option) <-chan *ImageData {
 	out := make(chan *ImageData)
-	log.Printf("Registry: %s\n", reg)
+	LogInfo("Registry: %s\n", reg)
 
 	bruteForceFile := defaultConfigData
 
@@ -491,12 +648,12 @@ func bruteForceTags(reg string, bruteForceConfig []byte, options ...crane.Option
 
 	var config BruteForceConfig
 	if err := json.NewDecoder(bytes.NewReader(defaultConfigData)).Decode(&config); err != nil {
-		log.Printf("Error decoding embedded config: %s", err)
+		LogInfo("Error decoding embedded config: %s", err)
 		return tags
 	}
 
 	for _, repoPrefix := range config.Repos {
-		log.Printf("Bruteforcing %s repos", repoPrefix)
+		LogInfo("Bruteforcing %s repos", repoPrefix)
 		for _, name := range config.Names {
 
 			ref := fmt.Sprintf("%s/%s", reg, path.Join(repoPrefix, name))
@@ -585,13 +742,16 @@ func EnumTarball(tarPath string) <-chan *ImageData {
 					continue
 				}
 
+				sanitizedRef := fmt.Sprintf("%s:%s", tag.Repository.RepositoryStr(), tag.TagStr())
+
 				out <- &ImageData{
-					Reference:  tagStr,
+					Reference:  sanitizedRef,
 					Registry:   tag.RegistryStr(),
 					Repository: tag.RepositoryStr(),
 					Tag:        tag.TagStr(),
 					Manifest:   string(man),
 					Config:     string(cfg),
+					Image:      img,
 				}
 			}
 		}
@@ -638,10 +798,10 @@ func RunTruffleHog(imageRef *ImageData) error {
 	cmd := exec.Command("trufflehog", "docker", fmt.Sprintf("--image=%s", image))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("trufflehog failed for %s: %v\nOutput:\n%s", image, err, string(output))
+		LogInfo("trufflehog failed for %s: %v\nOutput:\n%s", image, err, string(output))
 		return err
 	}
-	log.Printf("trufflehog completed for %s:\n%s", image, string(output))
+	LogInfo("trufflehog completed for %s:\n%s", image, string(output))
 	return nil
 }
 
@@ -659,7 +819,7 @@ func retryWithBackoff(attempts int, baseDelay time.Duration, op func() error) er
 			jitter := time.Duration(rand.Int63n(int64(delay) / 2))
 			sleep := delay + jitter
 
-			log.Printf("Retrying after %v due to error: %v", sleep, err)
+			LogInfo("Retrying after %v due to error: %v", sleep, err)
 			time.Sleep(sleep)
 			delay *= 2
 			// if delay > 30*time.Second {
