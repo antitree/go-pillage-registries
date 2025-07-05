@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
@@ -33,6 +34,7 @@ type ImageData struct {
 	Manifest   string
 	Config     string
 	Error      error
+	Image      v1.Image
 }
 
 type Manifest struct {
@@ -113,6 +115,15 @@ func (image *ImageData) Store(options *StorageOptions) error {
 			}
 
 			var previousFiles = make(map[string][]FileVersion)
+			var imgLayers []v1.Layer
+			if image.Image != nil {
+				imgLayers, err = image.Image.Layers()
+				if err != nil {
+					log.Printf("Failed to get layers: %v", err)
+					return err
+				}
+			}
+
 			for idx, layer := range parsed.Layers {
 				// whiteout files are small
 				// if layer.Size > options.FilterSmall {
@@ -127,9 +138,12 @@ func (image *ImageData) Store(options *StorageOptions) error {
 					continue
 				}
 
-				layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
-
-				err = EnumLayer(image, layerDir, layerRef, idx+1, options, options.CraneOptions, previousFiles)
+				if image.Image != nil {
+					err = EnumLayerFromLayer(image, layerDir, imgLayers[idx], idx+1, options, previousFiles)
+				} else {
+					layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
+					err = EnumLayer(image, layerDir, layerRef, idx+1, options, options.CraneOptions, previousFiles)
+				}
 				if err != nil {
 					LogWarn("Failed processing layer %s: %v", layer.Digest, err)
 					continue
@@ -296,6 +310,149 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 			}
 
 			//} else if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeDir {
+		} else {
+			var buf bytes.Buffer
+			if _, err := io.Copy(&buf, tarReader); err == nil {
+				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
+				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
+			} else {
+				log.Printf("Error reading file %s from tar: %v", hdr.Name, err)
+				continue
+			}
+		}
+	}
+
+	return nil
+}
+
+func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layerNumber int, storageOptions *StorageOptions, previousFiles map[string][]FileVersion) error {
+	rc, err := layer.Compressed()
+	if err != nil {
+		return fmt.Errorf("failed to get compressed stream: %w", err)
+	}
+	defer rc.Close()
+
+	var tarReader *tar.Reader
+
+	if storageOptions.StoreTarballs {
+		tarPath := filepath.Join(layerDir, "filesystem.tar")
+		f, err := os.Create(tarPath)
+		if err != nil {
+			return fmt.Errorf("cannot create tarball: %w", err)
+		}
+		if _, err := io.Copy(f, rc); err != nil {
+			f.Close()
+			return fmt.Errorf("failed writing tarball: %w", err)
+		}
+		f.Close()
+
+		tarFile, err := os.Open(tarPath)
+		if err != nil {
+			return fmt.Errorf("cannot reopen tarball: %w", err)
+		}
+		defer tarFile.Close()
+
+		gzr, err := gzip.NewReader(tarFile)
+		if err != nil {
+			return fmt.Errorf("gzip decompress failed: %w", err)
+		}
+		tarReader = tar.NewReader(gzr)
+	} else {
+		originalRC := rc
+		defer originalRC.Close()
+
+		buf := make([]byte, 2)
+		if _, err := io.ReadFull(rc, buf); err != nil {
+			return fmt.Errorf("peek error: %w", err)
+		}
+
+		rc = io.NopCloser(io.MultiReader(bytes.NewReader(buf), rc))
+
+		isGzip := buf[0] == 0x1f && buf[1] == 0x8b
+		if isGzip {
+			gzr, err := gzip.NewReader(rc)
+			if err != nil {
+				return fmt.Errorf("gzip decompress failed: %w", err)
+			}
+			defer gzr.Close()
+			tarReader = tar.NewReader(gzr)
+		} else {
+			tarReader = tar.NewReader(rc)
+		}
+
+	}
+
+	var resultsDir string
+	resultsDir = filepath.Join(storageOptions.OutputPath, "results", securejoin(image.Registry, image.Repository, image.Tag))
+	createdResultsDir := false
+
+	for {
+		hdr, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("Error reading tar entry: %v", err)
+			break
+		}
+
+		base := filepath.Base(hdr.Name)
+
+		if strings.HasPrefix(base, ".wh.") {
+			log.Print("Fucking whiteout file detected: ", hdr.Name)
+			deletedPath := filepath.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
+			deletedPath = strings.TrimPrefix(deletedPath, string(filepath.Separator))
+
+			ensureResultsDir := func() bool {
+				if createdResultsDir {
+					return true
+				}
+				if err := os.MkdirAll(resultsDir, 0755); err != nil {
+					log.Printf("Failed to create dir for results: %v", err)
+					return false
+				}
+				createdResultsDir = true
+				return true
+			}
+
+			restoreFile := func(name string, data []byte) {
+				if !ensureResultsDir() {
+					return
+				}
+				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", name, layerNumber))
+				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
+					log.Printf("Failed to create dir for %s: %v", restorePath, err)
+					return
+				}
+				f, err := os.Create(restorePath)
+				if err != nil {
+					log.Printf("Failed to create restore file %s: %v", restorePath, err)
+					return
+				}
+				if _, err := f.Write(data); err != nil {
+					log.Printf("Error restoring file %s: %v", restorePath, err)
+				}
+				f.Close()
+				log.Printf("Restored whiteout-deleted file to %s", restorePath)
+			}
+
+			if versions, ok := previousFiles[deletedPath]; ok && len(versions) > 0 {
+				data := versions[len(versions)-1].Data
+				restoreFile(deletedPath, data)
+			} else {
+				log.Printf("No previous version found for deleted file %s", deletedPath)
+			}
+
+			prefix := deletedPath + string(filepath.Separator)
+			for name, versions := range previousFiles {
+				if strings.HasPrefix(name, prefix) && len(versions) > 0 {
+					data := versions[len(versions)-1].Data
+					restoreFile(name, data)
+				} else {
+					log.Printf("No previous version found for deleted directory file %s", name)
+				}
+			}
+
 		} else {
 			var buf bytes.Buffer
 			if _, err := io.Copy(&buf, tarReader); err == nil {
@@ -588,11 +745,12 @@ func EnumTarball(tarPath string) <-chan *ImageData {
 
 				out <- &ImageData{
 					Reference:  sanitizedRef,
-					Registry:   "",
-					Repository: tag.Repository.RepositoryStr(),
+					Registry:   tag.RegistryStr(),
+					Repository: tag.RepositoryStr(),
 					Tag:        tag.TagStr(),
 					Manifest:   string(man),
 					Config:     string(cfg),
+					Image:      img,
 				}
 			}
 		}
