@@ -11,6 +11,7 @@ tests=(
   "-r skaffold -c /tmp/cache"
   "-r skaffold"
   "-s -r keys -o ./tmp/test6 -w"  # New test for the keys image
+  "--local example/keys.tar -o ./tmp/test7 -w"  # Test local tarball scanning
 )
 
 cleanup() {
@@ -34,6 +35,12 @@ for i in "${!tests[@]}"; do
   find "$out_dir" > "$before"
 
   if $BIN "$REG" ${tests[$i]} > "$out_dir/stdout.log" ; then
+    status=0
+  else
+    status=$?
+  fi
+
+  if [ $status -eq 0 ] && grep -q "Reference" "$out_dir/stdout.log"; then
     result="PASS"
   else
     result="FAIL"
