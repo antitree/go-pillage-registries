@@ -84,7 +84,7 @@ func securejoin(paths ...string) (out string) {
 }
 
 func (image *ImageData) Store(options *StorageOptions) error {
-	log.Printf("Pulling image layers for: %s", image.Reference)
+	LogInfo("Pulling image layers for: %s", image.Reference)
 	var imagePath string
 
 	if options.CachePath == "." {
@@ -101,7 +101,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 
 	imagePath = filepath.Join(options.CachePath, securejoin(image.Registry, image.Repository, image.Tag))
 	if err := os.MkdirAll(imagePath, os.ModePerm); err != nil {
-		log.Printf("Error making storage path %s: %v", imagePath, err)
+		LogInfo("Error making storage path %s: %v", imagePath, err)
 		return err
 	}
 
@@ -110,7 +110,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 			var parsed Manifest
 			err := json.Unmarshal([]byte(image.Manifest), &parsed)
 			if err != nil {
-				log.Printf("Error parsing manifest JSON for filtering: %v", err)
+				LogInfo("Error parsing manifest JSON for filtering: %v", err)
 				return err
 			}
 
@@ -119,7 +119,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 			if image.Image != nil {
 				imgLayers, err = image.Image.Layers()
 				if err != nil {
-					log.Printf("Failed to get layers: %v", err)
+					LogInfo("Failed to get layers: %v", err)
 					return err
 				}
 			}
@@ -134,7 +134,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 
 				err := os.MkdirAll(layerDir, 0755)
 				if err != nil {
-					log.Printf("Failed to create dir %s: %v", layerDir, err)
+					LogInfo("Failed to create dir %s: %v", layerDir, err)
 					continue
 				}
 
@@ -245,7 +245,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 			break
 		}
 		if err != nil {
-			log.Printf("Error reading tar entry: %v", err)
+			LogInfo("Error reading tar entry: %v", err)
 			break
 		}
 
@@ -262,7 +262,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 					return true
 				}
 				if err := os.MkdirAll(resultsDir, 0755); err != nil {
-					log.Printf("Failed to create dir for results: %v", err)
+					LogInfo("Failed to create dir for results: %v", err)
 					return false
 				}
 				createdResultsDir = true
@@ -275,19 +275,19 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				}
 				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", name, layerNumber))
 				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
-					log.Printf("Failed to create dir for %s: %v", restorePath, err)
+					LogInfo("Failed to create dir for %s: %v", restorePath, err)
 					return
 				}
 				f, err := os.Create(restorePath)
 				if err != nil {
-					log.Printf("Failed to create restore file %s: %v", restorePath, err)
+					LogInfo("Failed to create restore file %s: %v", restorePath, err)
 					return
 				}
 				if _, err := f.Write(data); err != nil {
-					log.Printf("Error restoring file %s: %v", restorePath, err)
+					LogInfo("Error restoring file %s: %v", restorePath, err)
 				}
 				f.Close()
-				log.Printf("Restored whiteout-deleted file to %s", restorePath)
+				LogInfo("Restored whiteout-deleted file to %s", restorePath)
 			}
 
 			// Restore a single file if present
@@ -295,7 +295,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				data := versions[len(versions)-1].Data
 				restoreFile(deletedPath, data)
 			} else {
-				log.Printf("No previous version found for deleted file %s", deletedPath)
+				LogWarn("No previous version found for deleted file %s", deletedPath)
 			}
 
 			// Restore any files contained in a deleted directory
@@ -305,7 +305,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 					data := versions[len(versions)-1].Data
 					restoreFile(name, data)
 				} else {
-					log.Printf("No previous version found for deleted directory file %s", name)
+					LogInfo("No previous version found for deleted directory file %s", name)
 				}
 			}
 
@@ -316,7 +316,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
 				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
 			} else {
-				log.Printf("Error reading file %s from tar: %v", hdr.Name, err)
+				LogInfo("Error reading file %s from tar: %v", hdr.Name, err)
 				continue
 			}
 		}
@@ -392,7 +392,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 			break
 		}
 		if err != nil {
-			log.Printf("Error reading tar entry: %v", err)
+			LogInfo("Error reading tar entry: %v", err)
 			break
 		}
 
@@ -408,7 +408,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 					return true
 				}
 				if err := os.MkdirAll(resultsDir, 0755); err != nil {
-					log.Printf("Failed to create dir for results: %v", err)
+					LogInfo("Failed to create dir for results: %v", err)
 					return false
 				}
 				createdResultsDir = true
@@ -421,26 +421,26 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 				}
 				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", name, layerNumber))
 				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
-					log.Printf("Failed to create dir for %s: %v", restorePath, err)
+					LogInfo("Failed to create dir for %s: %v", restorePath, err)
 					return
 				}
 				f, err := os.Create(restorePath)
 				if err != nil {
-					log.Printf("Failed to create restore file %s: %v", restorePath, err)
+					LogInfo("Failed to create restore file %s: %v", restorePath, err)
 					return
 				}
 				if _, err := f.Write(data); err != nil {
-					log.Printf("Error restoring file %s: %v", restorePath, err)
+					LogInfo("Error restoring file %s: %v", restorePath, err)
 				}
 				f.Close()
-				log.Printf("Restored whiteout-deleted file to %s", restorePath)
+				LogInfo("Restored whiteout-deleted file to %s", restorePath)
 			}
 
 			if versions, ok := previousFiles[deletedPath]; ok && len(versions) > 0 {
 				data := versions[len(versions)-1].Data
 				restoreFile(deletedPath, data)
 			} else {
-				log.Printf("No previous version found for deleted file %s", deletedPath)
+				LogInfo("No previous version found for deleted file %s", deletedPath)
 			}
 
 			prefix := deletedPath + string(filepath.Separator)
@@ -449,7 +449,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 					data := versions[len(versions)-1].Data
 					restoreFile(name, data)
 				} else {
-					log.Printf("No previous version found for deleted directory file %s", name)
+					LogInfo("No previous version found for deleted directory file %s", name)
 				}
 			}
 
@@ -459,7 +459,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
 				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
 			} else {
-				log.Printf("Error reading file %s from tar: %v", hdr.Name, err)
+				LogInfo("Error reading file %s from tar: %v", hdr.Name, err)
 				continue
 			}
 		}
@@ -501,7 +501,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 
 		err = json.Unmarshal([]byte(unparsedmanifest), &manifest)
 		if err != nil {
-			log.Printf("Error parsing manifest for image %s: %s", ref, err)
+			LogInfo("Error parsing manifest for image %s: %s", ref, err)
 			result.Error = err
 		}
 
@@ -517,7 +517,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 
 		strManifest, err := json.MarshalIndent(manifest, "", "  ")
 		if err != nil {
-			log.Printf("Error fetching parsing Manifest for image %s: %s", ref, err)
+			LogInfo("Error fetching parsing Manifest for image %s: %s", ref, err)
 		}
 		result.Manifest = string(strManifest)
 
@@ -531,7 +531,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 		})
 		//config, err := crane.Config(ref, options...)
 		if err != nil {
-			log.Printf("Error fetching config for image %s: %s (the config may be in the manifest itself)", ref, err)
+			LogInfo("Error fetching config for image %s: %s (the config may be in the manifest itself)", ref, err)
 
 			errStr := err.Error()
 			if strings.Contains(errStr, "TOOMANYREQUESTS") ||
@@ -553,7 +553,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 func EnumRepository(reg string, repo string, tags []string, options ...crane.Option) <-chan *ImageData {
 	out := make(chan *ImageData)
 	ref := fmt.Sprintf("%s/%s", reg, repo)
-	log.Printf("Repo: %s", ref)
+	LogInfo("Repo: %s", ref)
 
 	go func(ref string) {
 		defer close(out)
@@ -604,7 +604,7 @@ func EnumRepository(reg string, repo string, tags []string, options ...crane.Opt
 // If lists of repositories and tags are not supplied, lists will be enumerated from the registry's API.
 func EnumRegistry(reg string, repos []string, tags []string, options ...crane.Option) <-chan *ImageData {
 	out := make(chan *ImageData)
-	log.Printf("Registry: %s\n", reg)
+	LogInfo("Registry: %s\n", reg)
 
 	bruteForceFile := defaultConfigData
 
@@ -647,12 +647,12 @@ func bruteForceTags(reg string, bruteForceConfig []byte, options ...crane.Option
 
 	var config BruteForceConfig
 	if err := json.NewDecoder(bytes.NewReader(defaultConfigData)).Decode(&config); err != nil {
-		log.Printf("Error decoding embedded config: %s", err)
+		LogInfo("Error decoding embedded config: %s", err)
 		return tags
 	}
 
 	for _, repoPrefix := range config.Repos {
-		log.Printf("Bruteforcing %s repos", repoPrefix)
+		LogInfo("Bruteforcing %s repos", repoPrefix)
 		for _, name := range config.Names {
 
 			ref := fmt.Sprintf("%s/%s", reg, path.Join(repoPrefix, name))
@@ -797,10 +797,10 @@ func RunTruffleHog(imageRef *ImageData) error {
 	cmd := exec.Command("trufflehog", "docker", fmt.Sprintf("--image=%s", image))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("trufflehog failed for %s: %v\nOutput:\n%s", image, err, string(output))
+		LogInfo("trufflehog failed for %s: %v\nOutput:\n%s", image, err, string(output))
 		return err
 	}
-	log.Printf("trufflehog completed for %s:\n%s", image, string(output))
+	LogInfo("trufflehog completed for %s:\n%s", image, string(output))
 	return nil
 }
 
@@ -818,7 +818,7 @@ func retryWithBackoff(attempts int, baseDelay time.Duration, op func() error) er
 			jitter := time.Duration(rand.Int63n(int64(delay) / 2))
 			sleep := delay + jitter
 
-			log.Printf("Retrying after %v due to error: %v", sleep, err)
+			LogInfo("Retrying after %v due to error: %v", sleep, err)
 			time.Sleep(sleep)
 			delay *= 2
 			// if delay > 30*time.Second {
