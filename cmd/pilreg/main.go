@@ -62,7 +62,6 @@ func init() {
 	analysisFlags.BoolVarP(&whiteOut, "whiteout", "w", false, "Look for deleted/whiteout files in image layers.")
 	analysisFlags.BoolVarP(&all, "all", "a", false, "Enable all analysis options by default. (Very noisy!)")
 
-	analysisFlags.BoolVarP(&debug, "debug", "d", false, "Enable debug logging.")
 	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
 
 	// Connection options
@@ -71,7 +70,7 @@ func init() {
 	connFlags.BoolVarP(&insecure, "insecure", "i", false, "Use HTTP instead of HTTPS.")
 	connFlags.IntVar(&workerCount, "workers", 8, "Number of concurrent workers.")
 	connFlags.BoolVar(&showVersion, "version", false, "Print version information and exit.")
-	connFlags.BoolVar(&debug, "debug", false, "Enable debug logging.")
+	connFlags.BoolVarP(&debug, "debug", "d", false, "Enable debug logging.")
 	rootCmd.PersistentFlags().AddFlagSet(connFlags)
 }
 
