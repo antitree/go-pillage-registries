@@ -24,18 +24,26 @@ $ pilreg
 Usage:
   pilreg <registry> [flags]
 
-Flags:
-  -c, --cache string     Path to cache image layers (optional, only used if images are pulled)
-  -h, --help             help for pilreg
-  -i, --insecure         Fetch Data over plaintext
-  -r, --repos strings    list of repositories to scan on the registry. If blank, pilreg will attempt to enumerate them using the catalog API
-  -o, --results string   Path to directory for storing results. If blank, outputs configs and manifests as json object to Stdout.(must be used if 'store-images` is enabled)
-  -k, --skip-tls         Disables TLS certificate verification
-  -s, --store-images     Downloads filesystem for discovered images and stores an archive in the output directory (Disabled by default, requires --results to be set)
-  -t, --tags strings     list of tags to scan on each repository. If blank, pilreg will attempt to enumerate them using the tags API
-  -w, --whiteout         Look for deleted/whiteout files in image layers
-      --workers int      Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled) (default 8)
-      --version          Print version information and exit
+ Registry config options:
+  --repos	List of repositories to scan. If blank, uses the registry's catalog API.
+  --tags	List of tags to scan per repository. If blank, uses the tags API.
+
+ Storage config options:
+  --output	Directory to store output. Required with --store-images.
+  --store-images	Download and store image filesystems.
+  --cache	Path to cache image layers.
+  --small	Filter analysis on layers that are this size in bytes. (Default 40k)
+
+ Analysis config options:
+  --trufflehog	Scan image contents with TruffleHog.
+  --whiteout	Look for deleted/whiteout files in image layers.
+
+ Connection options:
+  --skip-tls	Disable TLS verification.
+  --insecure	Use HTTP instead of HTTPS.
+  --workers	Number of concurrent workers.
+  --version	Print version information and exit.
+
 ```
 
 ## Example:
@@ -43,3 +51,6 @@ Flags:
 In the [example directory](example/) there is an example of an image which
 Docker image that is a server that has a secret.
 
+## Acknowledgments
+* Thanks to @jmakinen-ncc the original author of NCC Group's go-registry-pillage
+* @jonjohnsonjr: For the idea around the whiteout file feature (and writing Crane)
