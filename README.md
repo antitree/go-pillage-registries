@@ -33,8 +33,9 @@ Flags:
   -k, --skip-tls         Disables TLS certificate verification
   -s, --store-images     Downloads filesystem for discovered images and stores an archive in the output directory (Disabled by default, requires --results to be set)
   -t, --tags strings     list of tags to scan on each repository. If blank, pilreg will attempt to enumerate them using the tags API
-  -x, --trufflehog       Integrate with Trufflehog to scan the images once they are found
-  -w, --workers int      Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled) (default 8)
+  -w, --whiteout         Look for deleted/whiteout files in image layers
+      --workers int      Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled) (default 8)
+      --version          Print version information and exit
 ```
 
 ## Example:
