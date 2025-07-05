@@ -5,12 +5,12 @@ BIN=pilreg
 REG="localhost:5000"
 
 tests=(
-  "-s -r skaffold -o ./tmp/test1 -0"
+  "-s -r skaffold -o ./tmp/test1 -w"
   "-r skaffold -o ./tmp/test2 -x"
-  "-r skaffold -0"
+  "-r skaffold -w"
   "-r skaffold -c /tmp/cache"
   "-r skaffold"
-  "-s -r keys -o ./tmp/test6 -0"  # New test for the keys image
+  "-s -r keys -o ./tmp/test6 -w"  # New test for the keys image
 )
 
 cleanup() {

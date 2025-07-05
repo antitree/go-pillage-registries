@@ -30,11 +30,17 @@ var (
 	truffleHog  bool
 	whiteOut    bool
 	filterSmall int64
+	showVersion bool
+)
+
+var (
+	version   = "dev"
+	buildDate = "unknown"
 )
 
 func init() {
 	// Registry config options
-	scanFlags := pflag.NewFlagSet("Scan Options", pflag.ContinueOnError)
+	scanFlags := pflag.NewFlagSet("Registry Options", pflag.ContinueOnError)
 	scanFlags.StringSliceVarP(&repos, "repos", "r", []string{}, "List of repositories to scan. If blank, uses the registry's catalog API.")
 	scanFlags.StringSliceVarP(&tags, "tags", "t", []string{}, "List of tags to scan per repository. If blank, uses the tags API.")
 	rootCmd.PersistentFlags().AddFlagSet(scanFlags)
@@ -50,22 +56,24 @@ func init() {
 	// Analysis config options
 	analysisFlags := pflag.NewFlagSet("Analysis Options", pflag.ContinueOnError)
 	analysisFlags.BoolVarP(&truffleHog, "trufflehog", "x", false, "Scan image contents with TruffleHog.")
-	analysisFlags.BoolVarP(&whiteOut, "whiteout", "0", false, "Look for deleted/whiteout files in image layers.")
+	analysisFlags.BoolVarP(&whiteOut, "whiteout", "w", false, "Look for deleted/whiteout files in image layers.")
 	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
 
 	// Connection options
-	connFlags := pflag.NewFlagSet("Connection/Runtime Options", pflag.ContinueOnError)
+	connFlags := pflag.NewFlagSet("Connection Options", pflag.ContinueOnError)
 	connFlags.BoolVarP(&skiptls, "skip-tls", "k", false, "Disable TLS verification.")
 	connFlags.BoolVarP(&insecure, "insecure", "i", false, "Use HTTP instead of HTTPS.")
-	connFlags.IntVarP(&workerCount, "workers", "w", 8, "Number of concurrent workers.")
+	connFlags.IntVar(&workerCount, "workers", 8, "Number of concurrent workers.")
+	connFlags.BoolVar(&showVersion, "version", false, "Print version information and exit.")
 	rootCmd.PersistentFlags().AddFlagSet(connFlags)
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "pilreg <registry>",
-	Short: "pilreg is a tool which queries a docker image registry to enumerate images and collect their metadata and filesystems",
-	Args:  cobra.MinimumNArgs(1),
-	Run:   run,
+	Use:     "pilreg <registry>",
+	Short:   "pilreg is a tool which queries a docker image registry to enumerate images and collect their metadata and filesystems",
+	Args:    cobra.ArbitraryArgs,
+	Run:     run,
+	Version: version + " (" + buildDate + ")",
 }
 
 // NormalizeFlags applies implicit behavior for CLI combinations.
@@ -97,7 +105,16 @@ func NormalizeFlags() {
 	}
 }
 
-func run(_ *cobra.Command, registries []string) {
+func run(cmd *cobra.Command, registries []string) {
+	if showVersion {
+		fmt.Printf("pilreg %s (%s)\n", version, buildDate)
+		return
+	}
+	if len(registries) == 0 {
+		cmd.Help()
+		return
+	}
+
 	NormalizeFlags()
 
 	if skiptls {
@@ -162,21 +179,17 @@ func CheckTrufflehogInstalled() bool {
 // SetHelpFunc prints grouped help output for categorized flags
 func init() {
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		fmt.Println("\n Scan:")
+		fmt.Println("\n Registry config options:")
 		printFlags(cmd, []string{"repos", "tags"})
 
-		fmt.Println("\n Storage:")
-		printFlags(cmd, []string{"results", "store-images", "cache"})
+		fmt.Println("\n Storage config options:")
+		printFlags(cmd, []string{"output", "store-images", "cache", "small"})
 
-		fmt.Println("\n Secret Hunting:(assumes storage above)")
+		fmt.Println("\n Analysis config options:")
 		printFlags(cmd, []string{"trufflehog", "whiteout"})
 
-		fmt.Println("\nOther options:")
-		cmd.Flags().VisitAll(func(f *pflag.Flag) {
-			if !contains([]string{"repos", "tags", "results", "store-images", "cache", "trufflehog", "whiteout"}, f.Name) {
-				fmt.Printf("  --%s	%s\n", f.Name, f.Usage)
-			}
-		})
+		fmt.Println("\n Connection options:")
+		printFlags(cmd, []string{"skip-tls", "insecure", "workers", "version"})
 	})
 }
 
