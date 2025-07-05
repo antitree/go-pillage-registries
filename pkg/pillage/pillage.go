@@ -584,10 +584,12 @@ func EnumTarball(tarPath string) <-chan *ImageData {
 					continue
 				}
 
+				sanitizedRef := fmt.Sprintf("%s:%s", tag.Repository.RepositoryStr(), tag.TagStr())
+
 				out <- &ImageData{
-					Reference:  tagStr,
-					Registry:   tag.RegistryStr(),
-					Repository: tag.RepositoryStr(),
+					Reference:  sanitizedRef,
+					Registry:   "",
+					Repository: tag.Repository.RepositoryStr(),
 					Tag:        tag.TagStr(),
 					Manifest:   string(man),
 					Config:     string(cfg),
