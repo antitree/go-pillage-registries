@@ -49,10 +49,9 @@ func init() {
 
 	// Storage config options
 	storageFlags := pflag.NewFlagSet("Storage Options", pflag.ContinueOnError)
-	storageFlags.StringVarP(&outputPath, "output", "o", ".", "Directory to store output. Required with --store-images.")
+	storageFlags.StringVarP(&outputPath, "output", "o", ".", "Directory to store output. Required with --store-images.(./results/ by default)")
 	storageFlags.BoolVarP(&storeImages, "store-images", "s", false, "Download and store image filesystems.")
-	storageFlags.StringVarP(&cachePath, "cache", "c", ".", "Path to cache image layers.")
-	storageFlags.Int64VarP(&filterSmall, "small", "f", 40000, "Filter analysis on layers that are this size in bytes. (Default 40k)")
+	storageFlags.StringVarP(&cachePath, "cache", "c", ".", "Path to cache image layers. (/tmp by default)")
 	rootCmd.PersistentFlags().AddFlagSet(storageFlags)
 
 	// Analysis config options
@@ -197,7 +196,17 @@ func CheckTrufflehogInstalled() bool {
 // SetHelpFunc prints grouped help output for categorized flags
 func init() {
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		fmt.Println("\n Registry config options:")
+		fmt.Print("Usage: pilreg [OPTIONS] <registry>\n\n")
+		fmt.Println("pilreg is penetration testing tool targeting container images hosted in a registry or in a tar ball.\n")
+
+		fmt.Println("Examples:\n")
+		fmt.Println("  pilreg 127.0.0.1:5000 -a")
+		fmt.Println("  pilreg 127.0.0.1:5000 --repos nginx --tags latest,stable")
+		fmt.Println("  pilreg gcr.io --repos <project>/<my image>:latest")
+		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout")
+		fmt.Println("  pilreg <registry> --trufflehog")
+
+		fmt.Println("\n Registry/Local config options:")
 		printFlags(cmd, []string{"repos", "tags", "local"})
 
 		fmt.Println("\n Storage config options:")
