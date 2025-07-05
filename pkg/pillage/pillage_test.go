@@ -2,27 +2,52 @@ package pillage
 
 import (
 	_ "embed"
-	"reflect"
+	"fmt"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/google/go-containerregistry/pkg/v1/random"
 )
+
+func setupTestRegistry(t *testing.T) (host, repo, tag string, cleanup func()) {
+	t.Helper()
+	srv := httptest.NewServer(registry.New())
+	host = strings.TrimPrefix(srv.URL, "http://")
+	repo = "test/repo"
+	tag = "tag"
+	img, err := random.Image(1024, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := crane.Push(img, fmt.Sprintf("%s/%s:%s", host, repo, tag)); err != nil {
+		t.Fatal(err)
+	}
+	cleanup = srv.Close
+	return
+}
 
 func TestMakeCraneOptions(t *testing.T) {
 	type args struct {
 		insecure bool
 	}
 	tests := []struct {
-		name        string
-		args        args
-		wantOptions []crane.Option
+		name string
+		args args
+		want int
 	}{
-		// TODO: Add test cases.
+		{name: "secure options", args: args{insecure: false}, want: 0},
+		{name: "insecure options", args: args{insecure: true}, want: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if gotOptions := MakeCraneOptions(tt.args.insecure); !reflect.DeepEqual(gotOptions, tt.wantOptions) {
-				t.Errorf("MakeCraneOptions() = %v, want %v", gotOptions, tt.wantOptions)
+			got := MakeCraneOptions(tt.args.insecure)
+			if len(got) != tt.want {
+				t.Errorf("expected %d options got %d", tt.want, len(got))
 			}
 		})
 	}
@@ -37,7 +62,21 @@ func Test_securejoin(t *testing.T) {
 		args    args
 		wantOut string
 	}{
-		// TODO: Add test cases.
+		{
+			name:    "basic join",
+			args:    args{paths: []string{"a", "b", "c"}},
+			wantOut: filepath.Join("/", "a", "b", "c"),
+		},
+		{
+			name:    "sanitize dotdots",
+			args:    args{paths: []string{"a/..", "b", "c"}},
+			wantOut: filepath.Join("/", "b", "c"),
+		},
+		{
+			name:    "leading dotdot",
+			args:    args{paths: []string{"../a", "b", "c"}},
+			wantOut: filepath.Join("/", "a", "b", "c"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -112,6 +151,22 @@ func TestImageData_Store(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "invalid manifest returns error",
+			image: &ImageData{
+				Reference:  "dummy.io/test/image:latest",
+				Registry:   "dummy.io",
+				Repository: "test/image",
+				Tag:        "latest",
+				Manifest:   "{notjson}",
+			},
+			options: &StorageOptions{
+				CachePath:   t.TempDir(),
+				OutputPath:  t.TempDir(),
+				StoreImages: true,
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -134,14 +189,21 @@ func TestEnumImage(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want <-chan *ImageData
 	}{
-		// TODO: Add test cases.
+		{name: "basic"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := EnumImage(tt.args.reg, tt.args.repo, tt.args.tag, tt.args.options...); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("EnumImage() = %v, want %v", got, tt.want)
+			host, repo, tag, cleanup := setupTestRegistry(t)
+			defer cleanup()
+			ch := EnumImage(host, repo, tag, crane.Insecure)
+			img := <-ch
+			if img.Error != nil {
+				t.Fatalf("EnumImage error: %v", img.Error)
+			}
+			wantRef := fmt.Sprintf("%s/%s:%s", host, repo, tag)
+			if img.Reference != wantRef {
+				t.Errorf("got ref %s want %s", img.Reference, wantRef)
 			}
 		})
 	}
@@ -157,14 +219,23 @@ func TestEnumRepository(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want <-chan *ImageData
 	}{
-		// TODO: Add test cases.
+		{name: "basic"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := EnumRepository(tt.args.reg, tt.args.repo, tt.args.tags, tt.args.options...); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("EnumRepository() = %v, want %v", got, tt.want)
+			host, repo, tag, cleanup := setupTestRegistry(t)
+			defer cleanup()
+			ch := EnumRepository(host, repo, []string{tag}, crane.Insecure)
+			var count int
+			for img := range ch {
+				if img.Error != nil {
+					t.Fatalf("EnumRepository error: %v", img.Error)
+				}
+				count++
+			}
+			if count != 1 {
+				t.Errorf("expected 1 image, got %d", count)
 			}
 		})
 	}
@@ -180,14 +251,23 @@ func TestEnumRegistry(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want <-chan *ImageData
 	}{
-		// TODO: Add test cases.
+		{name: "basic"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := EnumRegistry(tt.args.reg, tt.args.repos, tt.args.tags, tt.args.options...); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("EnumRegistry() = %v, want %v", got, tt.want)
+			host, repo, tag, cleanup := setupTestRegistry(t)
+			defer cleanup()
+			ch := EnumRegistry(host, []string{repo}, []string{tag}, crane.Insecure)
+			var count int
+			for img := range ch {
+				if img.Error != nil {
+					t.Fatalf("EnumRegistry error: %v", img.Error)
+				}
+				count++
+			}
+			if count != 1 {
+				t.Errorf("expected 1 image, got %d", count)
 			}
 		})
 	}
@@ -204,12 +284,15 @@ func Test_bruteForceTags(t *testing.T) {
 		args args
 		want []string
 	}{
-		// TODO: Add test cases.
+		{name: "empty result"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := bruteForceTags(tt.args.reg, tt.args.bruteForceConfig, tt.args.options...); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("bruteForceTags() = %v, want %v", got, tt.want)
+			host, _, _, cleanup := setupTestRegistry(t)
+			defer cleanup()
+			got := bruteForceTags(host, nil, crane.Insecure)
+			if len(got) != 0 {
+				t.Errorf("expected empty result, got %v", got)
 			}
 		})
 	}
@@ -225,14 +308,23 @@ func TestEnumRegistries(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want <-chan *ImageData
 	}{
-		// TODO: Add test cases.
+		{name: "basic"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := EnumRegistries(tt.args.regs, tt.args.repos, tt.args.tags, tt.args.options...); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("EnumRegistries() = %v, want %v", got, tt.want)
+			host, repo, tag, cleanup := setupTestRegistry(t)
+			defer cleanup()
+			ch := EnumRegistries([]string{host}, []string{repo}, []string{tag}, crane.Insecure)
+			var count int
+			for img := range ch {
+				if img.Error != nil {
+					t.Fatalf("EnumRegistries error: %v", img.Error)
+				}
+				count++
+			}
+			if count != 1 {
+				t.Errorf("expected 1 image, got %d", count)
 			}
 		})
 	}
@@ -247,11 +339,28 @@ func TestRunTruffleHog(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{name: "success", wantErr: false},
+		{name: "failure", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := RunTruffleHog(tt.args.imageRef); (err != nil) != tt.wantErr {
+			dir := t.TempDir()
+			exe := filepath.Join(dir, "trufflehog")
+			var script string
+			if tt.wantErr {
+				script = "#!/bin/sh\nexit 1"
+			} else {
+				script = "#!/bin/sh\necho ok"
+			}
+			if err := os.WriteFile(exe, []byte(script), 0755); err != nil {
+				t.Fatal(err)
+			}
+			oldPath := os.Getenv("PATH")
+			os.Setenv("PATH", dir+string(os.PathListSeparator)+oldPath)
+			defer os.Setenv("PATH", oldPath)
+			img := &ImageData{Registry: "r", Repository: "repo", Tag: "tag"}
+			err := RunTruffleHog(img)
+			if (err != nil) != tt.wantErr {
 				t.Errorf("RunTruffleHog() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
