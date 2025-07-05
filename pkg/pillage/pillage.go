@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
@@ -140,7 +139,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 
 	if image.Error != nil {
 		errorPath := path.Join(imagePath, "errors.log")
-		err := ioutil.WriteFile(errorPath, []byte(image.Error.Error()), os.ModePerm)
+		err := os.WriteFile(errorPath, []byte(image.Error.Error()), os.ModePerm)
 		if err != nil {
 			return fmt.Errorf("error making error file %s: %v", errorPath, err)
 		}
