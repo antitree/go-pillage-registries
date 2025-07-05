@@ -33,6 +33,7 @@ var (
 	filterSmall int64
 	showVersion bool
 	debug       bool
+	all         bool // Enable all analysis options by default
 )
 
 var (
@@ -59,15 +60,10 @@ func init() {
 	analysisFlags := pflag.NewFlagSet("Analysis Options", pflag.ContinueOnError)
 	analysisFlags.BoolVarP(&truffleHog, "trufflehog", "x", false, "Scan image contents with TruffleHog.")
 	analysisFlags.BoolVarP(&whiteOut, "whiteout", "w", false, "Look for deleted/whiteout files in image layers.")
-
-	var all bool
 	analysisFlags.BoolVarP(&all, "all", "a", false, "Enable all analysis options by default. (Very noisy!)")
-	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
 
-	if all {
-		truffleHog = true
-		whiteOut = true
-	}
+	analysisFlags.BoolVarP(&debug, "debug", "d", false, "Enable debug logging.")
+	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
 
 	// Connection options
 	connFlags := pflag.NewFlagSet("Connection Options", pflag.ContinueOnError)
@@ -118,10 +114,17 @@ func NormalizeFlags() {
 
 func run(cmd *cobra.Command, registries []string) {
 	pillage.SetDebug(debug)
+
 	if showVersion {
 		fmt.Printf("pilreg %s (%s)\n", version, buildDate)
 		return
 	}
+
+	if all && !truffleHog && !whiteOut {
+		truffleHog = true
+		whiteOut = true
+	}
+
 	if localTar == "" && len(registries) > 0 && isTarballPath(registries[0]) {
 		localTar = registries[0]
 		registries = registries[1:]

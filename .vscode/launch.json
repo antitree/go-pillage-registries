@@ -41,7 +41,7 @@
             "${workspaceFolder}/vendor/**", // skips vendored deps
             "**/pkg/mod/**"        // skips Go module cache
         ],
-        "args": ["--local", "../../example/ctfwhiteout.tar", "--whiteout"],
+        "args": ["--local", "../../example/ctfwhiteout.tar", "--all"],
       }
     ]
 }
