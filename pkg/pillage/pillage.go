@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
 // ImageData represents an image enumerated from a registry or alternatively an error that occured while enumerating a registry.
@@ -541,6 +543,93 @@ func EnumRegistries(regs []string, repos []string, tags []string, options ...cra
 		wg.Wait()
 	}()
 	return out
+}
+
+// EnumTarball reads a docker image tarball saved with 'docker save' and returns images found within.
+func EnumTarball(tarPath string) <-chan *ImageData {
+	out := make(chan *ImageData)
+	go func() {
+		defer close(out)
+
+		opener := func() (io.ReadCloser, error) { return os.Open(tarPath) }
+
+		manifest, err := tarball.LoadManifest(opener)
+		if err != nil {
+			out <- &ImageData{Reference: tarPath, Error: err}
+			return
+		}
+
+		for _, desc := range manifest {
+			for _, tagStr := range desc.RepoTags {
+				tag, err := name.NewTag(tagStr, name.WeakValidation)
+				if err != nil {
+					out <- &ImageData{Reference: tagStr, Error: err}
+					continue
+				}
+
+				img, err := tarball.Image(opener, &tag)
+				if err != nil {
+					out <- &ImageData{Reference: tagStr, Error: err}
+					continue
+				}
+
+				man, err := img.RawManifest()
+				if err != nil {
+					out <- &ImageData{Reference: tagStr, Error: err}
+					continue
+				}
+				cfg, err := img.RawConfigFile()
+				if err != nil {
+					out <- &ImageData{Reference: tagStr, Error: err}
+					continue
+				}
+
+				out <- &ImageData{
+					Reference:  tagStr,
+					Registry:   tag.RegistryStr(),
+					Repository: tag.RepositoryStr(),
+					Tag:        tag.TagStr(),
+					Manifest:   string(man),
+					Config:     string(cfg),
+				}
+			}
+		}
+	}()
+
+	return out
+}
+
+// ValidateTarball checks that the provided path points to a valid tar archive.
+func ValidateTarball(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	buf := make([]byte, 2)
+	if _, err := io.ReadFull(f, buf); err != nil {
+		return err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	var r io.Reader = f
+	if buf[0] == 0x1f && buf[1] == 0x8b {
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			return err
+		}
+		defer gz.Close()
+		r = gz
+	}
+
+	tr := tar.NewReader(r)
+	if _, err := tr.Next(); err != nil {
+		return fmt.Errorf("invalid tarball: %w", err)
+	}
+	return nil
 }
 
 func RunTruffleHog(imageRef *ImageData) error {

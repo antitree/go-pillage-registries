@@ -27,6 +27,7 @@ Usage:
  Registry config options:
   --repos	List of repositories to scan. If blank, uses the registry's catalog API.
   --tags	List of tags to scan per repository. If blank, uses the tags API.
+  --local string     Path to a local image tarball to scan
 
  Storage config options:
   --output	Directory to store output. Required with --store-images.
@@ -43,7 +44,6 @@ Usage:
   --insecure	Use HTTP instead of HTTPS.
   --workers	Number of concurrent workers.
   --version	Print version information and exit.
-
 ```
 
 ## Example:

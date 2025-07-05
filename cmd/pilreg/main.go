@@ -20,6 +20,7 @@ import (
 var (
 	repos       []string
 	tags        []string
+	localTar    string
 	skiptls     bool
 	insecure    bool
 	storeImages bool
@@ -43,6 +44,7 @@ func init() {
 	scanFlags := pflag.NewFlagSet("Registry Options", pflag.ContinueOnError)
 	scanFlags.StringSliceVarP(&repos, "repos", "r", []string{}, "List of repositories to scan. If blank, uses the registry's catalog API.")
 	scanFlags.StringSliceVarP(&tags, "tags", "t", []string{}, "List of tags to scan per repository. If blank, uses the tags API.")
+	scanFlags.StringVarP(&localTar, "local", "l", "", "Path to a local image tarball to scan.")
 	rootCmd.PersistentFlags().AddFlagSet(scanFlags)
 
 	// Storage config options
@@ -110,7 +112,7 @@ func run(cmd *cobra.Command, registries []string) {
 		fmt.Printf("pilreg %s (%s)\n", version, buildDate)
 		return
 	}
-	if len(registries) == 0 {
+	if len(registries) == 0 && localTar == "" {
 		cmd.Help()
 		return
 	}
@@ -132,7 +134,15 @@ func run(cmd *cobra.Command, registries []string) {
 		FilterSmall:  filterSmall,
 	}
 
-	images := pillage.EnumRegistries(registries, repos, tags, craneoptions...)
+	var images <-chan *pillage.ImageData
+	if localTar != "" {
+		if err := pillage.ValidateTarball(localTar); err != nil {
+			log.Fatalf("invalid tarball %s: %v", localTar, err)
+		}
+		images = pillage.EnumTarball(localTar)
+	} else {
+		images = pillage.EnumRegistries(registries, repos, tags, craneoptions...)
+	}
 
 	var results []*pillage.ImageData
 	wg := sizedwaitgroup.New(workerCount)
