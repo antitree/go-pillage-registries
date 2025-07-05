@@ -117,6 +117,7 @@ func NormalizeFlags() {
 }
 
 func run(cmd *cobra.Command, registries []string) {
+	pillage.SetDebug(debug)
 	if showVersion {
 		fmt.Printf("pilreg %s (%s)\n", version, buildDate)
 		return
