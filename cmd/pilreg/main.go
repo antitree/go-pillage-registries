@@ -120,6 +120,10 @@ func run(cmd *cobra.Command, registries []string) {
 		fmt.Printf("pilreg %s (%s)\n", version, buildDate)
 		return
 	}
+	if localTar == "" && len(registries) > 0 && isTarballPath(registries[0]) {
+		localTar = registries[0]
+		registries = registries[1:]
+	}
 	if len(registries) == 0 && localTar == "" {
 		cmd.Help()
 		return
@@ -226,6 +230,17 @@ func printFlags(cmd *cobra.Command, names []string) {
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+func isTarballPath(path string) bool {
+	tarExts := []string{".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"}
+	lower := strings.ToLower(path)
+	for _, ext := range tarExts {
+		if strings.HasSuffix(lower, ext) {
 			return true
 		}
 	}
