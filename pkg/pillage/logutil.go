@@ -9,6 +9,7 @@ const (
 	colorRed    = "\033[31m"
 	colorYellow = "\033[33m"
 	colorBlue   = "\033[34m"
+	colorGray   = "\033[90m"
 )
 
 func LogInfo(format string, args ...interface{}) {
@@ -17,6 +18,10 @@ func LogInfo(format string, args ...interface{}) {
 
 func LogWarn(format string, args ...interface{}) {
 	log.Printf(colorYellow+"[WARN] "+format+colorReset, args...)
+}
+
+func LogDebug(format string, args ...interface{}) {
+	log.Printf(colorGray+"[DEBUG] "+format+colorReset, args...)
 }
 
 func LogError(format string, args ...interface{}) {

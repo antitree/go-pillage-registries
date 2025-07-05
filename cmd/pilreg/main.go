@@ -59,7 +59,15 @@ func init() {
 	analysisFlags := pflag.NewFlagSet("Analysis Options", pflag.ContinueOnError)
 	analysisFlags.BoolVarP(&truffleHog, "trufflehog", "x", false, "Scan image contents with TruffleHog.")
 	analysisFlags.BoolVarP(&whiteOut, "whiteout", "w", false, "Look for deleted/whiteout files in image layers.")
+
+	var all bool
+	analysisFlags.BoolVarP(&all, "all", "a", false, "Enable all analysis options by default. (Very noisy!)")
 	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
+
+	if all {
+		truffleHog = true
+		whiteOut = true
+	}
 
 	// Connection options
 	connFlags := pflag.NewFlagSet("Connection Options", pflag.ContinueOnError)
@@ -190,7 +198,7 @@ func CheckTrufflehogInstalled() bool {
 func init() {
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		fmt.Println("\n Registry config options:")
-		printFlags(cmd, []string{"repos", "tags"})
+		printFlags(cmd, []string{"repos", "tags", "local"})
 
 		fmt.Println("\n Storage config options:")
 		printFlags(cmd, []string{"output", "store-images", "cache", "small"})
@@ -199,7 +207,10 @@ func init() {
 		printFlags(cmd, []string{"trufflehog", "whiteout"})
 
 		fmt.Println("\n Connection options:")
-		printFlags(cmd, []string{"skip-tls", "insecure", "workers", "version"})
+		printFlags(cmd, []string{"skip-tls", "insecure", "workers"})
+
+		fmt.Println("")
+		printFlags(cmd, []string{"version"})
 	})
 }
 

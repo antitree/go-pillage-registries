@@ -132,6 +132,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 				err = EnumLayer(image, layerDir, layerRef, idx+1, options, options.CraneOptions, previousFiles)
 				if err != nil {
 					LogWarn("Failed processing layer %s: %v", layer.Digest, err)
+					LogDebug("%s\n%s", image.Manifest, image.Config)
 					continue
 				}
 			}
