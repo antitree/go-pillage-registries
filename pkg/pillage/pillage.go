@@ -60,6 +60,12 @@ type BruteForceConfig struct {
 	Names []string `json:"names"`
 }
 
+// FileVersion tracks the bytes of a file and the layer it was found in.
+type FileVersion struct {
+	Layer int
+	Data  []byte
+}
+
 func MakeCraneOptions(insecure bool) (options []crane.Option) {
 	if insecure {
 		options = append(options, crane.Insecure)
@@ -105,12 +111,12 @@ func (image *ImageData) Store(options *StorageOptions) error {
 				return err
 			}
 
-			var previousFiles = make(map[string][]byte)
+			var previousFiles = make(map[string][]FileVersion)
 			for idx, layer := range parsed.Layers {
 				// whiteout files are small
-				if layer.Size > options.FilterSmall {
-					continue
-				}
+				// if layer.Size > options.FilterSmall {
+				// 	continue
+				// }
 
 				layerDir := filepath.Join(imagePath, strings.ReplaceAll(layer.Digest, ":", "_"))
 
@@ -142,7 +148,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 	return image.Error
 }
 
-func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]byte) error {
+func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]FileVersion) error {
 	crLayer, err := crane.PullLayer(layerRef, craneOpts...)
 	if err != nil {
 		return fmt.Errorf("pull failed for layer %s: %w", layerRef, err)
@@ -231,39 +237,72 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 		base := filepath.Base(hdr.Name)
 
 		if strings.HasPrefix(base, ".wh.") {
-			deletedFile := strings.TrimPrefix(base, ".wh.")
-			if data, ok := previousFiles[deletedFile]; ok {
-				if !createdResultsDir {
-					if err := os.MkdirAll(resultsDir, 0755); err != nil {
-						log.Printf("Failed to create dir for results: %v", err)
-						continue
-					}
-					createdResultsDir = true
-				}
+			log.Print("Fucking whiteout file detected: ", hdr.Name)
+			deletedPath := filepath.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
+			deletedPath = strings.TrimPrefix(deletedPath, string(filepath.Separator))
 
-				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", deletedFile, layerNumber))
+			// Helper to create the results directory once
+			ensureResultsDir := func() bool {
+				if createdResultsDir {
+					return true
+				}
+				if err := os.MkdirAll(resultsDir, 0755); err != nil {
+					log.Printf("Failed to create dir for results: %v", err)
+					return false
+				}
+				createdResultsDir = true
+				return true
+			}
+
+			restoreFile := func(name string, data []byte) {
+				if !ensureResultsDir() {
+					return
+				}
+				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", name, layerNumber))
 				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
 					log.Printf("Failed to create dir for %s: %v", restorePath, err)
-					continue
+					return
 				}
-
-				restoreFile, err := os.Create(restorePath)
+				f, err := os.Create(restorePath)
 				if err != nil {
 					log.Printf("Failed to create restore file %s: %v", restorePath, err)
-					continue
+					return
 				}
-				if _, err := restoreFile.Write(data); err != nil {
+				if _, err := f.Write(data); err != nil {
 					log.Printf("Error restoring file %s: %v", restorePath, err)
 				}
-				restoreFile.Close()
-
+				f.Close()
 				log.Printf("Restored whiteout-deleted file to %s", restorePath)
 			}
 
-		} else if hdr.Typeflag == tar.TypeReg {
+			// Restore a single file if present
+			if versions, ok := previousFiles[deletedPath]; ok && len(versions) > 0 {
+				data := versions[len(versions)-1].Data
+				restoreFile(deletedPath, data)
+			} else {
+				log.Printf("No previous version found for deleted file %s", deletedPath)
+			}
+
+			// Restore any files contained in a deleted directory
+			prefix := deletedPath + string(filepath.Separator)
+			for name, versions := range previousFiles {
+				if strings.HasPrefix(name, prefix) && len(versions) > 0 {
+					data := versions[len(versions)-1].Data
+					restoreFile(name, data)
+				} else {
+					log.Printf("No previous version found for deleted directory file %s", name)
+				}
+			}
+
+			//} else if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeDir {
+		} else {
 			var buf bytes.Buffer
 			if _, err := io.Copy(&buf, tarReader); err == nil {
-				previousFiles[filepath.Base(hdr.Name)] = buf.Bytes()
+				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
+				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
+			} else {
+				log.Printf("Error reading file %s from tar: %v", hdr.Name, err)
+				continue
 			}
 		}
 	}
