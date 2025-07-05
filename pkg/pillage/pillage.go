@@ -296,7 +296,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				data := versions[len(versions)-1].Data
 				restoreFile(deletedPath, data)
 			} else {
-				LogWarn("No previous version found for deleted file %s", deletedPath)
+				LogDebug("No previous version found for deleted file %s", deletedPath)
 			}
 
 			// Restore any files contained in a deleted directory
@@ -306,7 +306,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 					data := versions[len(versions)-1].Data
 					restoreFile(name, data)
 				} else {
-					LogInfo("No previous version found for deleted directory file %s", name)
+					LogDebug("No previous version found for deleted directory file %s", name)
 				}
 			}
 
@@ -441,7 +441,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 				data := versions[len(versions)-1].Data
 				restoreFile(deletedPath, data)
 			} else {
-				LogInfo("No previous version found for deleted file %s", deletedPath)
+				LogDebug("No previous version found for deleted file %s", deletedPath)
 			}
 
 			prefix := deletedPath + string(filepath.Separator)
@@ -450,7 +450,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 					data := versions[len(versions)-1].Data
 					restoreFile(name, data)
 				} else {
-					LogInfo("No previous version found for deleted directory file %s", name)
+					LogDebug("No previous version found for deleted directory file %s", name)
 				}
 			}
 

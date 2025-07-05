@@ -21,6 +21,8 @@ func LogWarn(format string, args ...interface{}) {
 }
 
 func LogDebug(format string, args ...interface{}) {
+	// Only log debug messages if debug mode is enabled
+	// This allows for more verbose output during development or troubleshooting
 	log.Printf(colorGray+"[DEBUG] "+format+colorReset, args...)
 }
 

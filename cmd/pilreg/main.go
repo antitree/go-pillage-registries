@@ -32,6 +32,7 @@ var (
 	whiteOut    bool
 	filterSmall int64
 	showVersion bool
+	debug       bool
 )
 
 var (
@@ -74,6 +75,7 @@ func init() {
 	connFlags.BoolVarP(&insecure, "insecure", "i", false, "Use HTTP instead of HTTPS.")
 	connFlags.IntVar(&workerCount, "workers", 8, "Number of concurrent workers.")
 	connFlags.BoolVar(&showVersion, "version", false, "Print version information and exit.")
+	connFlags.BoolVar(&debug, "debug", false, "Enable debug logging.")
 	rootCmd.PersistentFlags().AddFlagSet(connFlags)
 }
 
@@ -224,6 +226,7 @@ func init() {
 
 		fmt.Println("")
 		printFlags(cmd, []string{"version"})
+		printFlags(cmd, []string{"debug"})
 	})
 }
 
