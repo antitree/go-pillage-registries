@@ -24,17 +24,24 @@ $ pilreg
 Usage:
   pilreg <registry> [flags]
 
-Flags:
-  -c, --cache string     Path to cache image layers (optional, only used if images are pulled)
-  -h, --help             help for pilreg
-  -i, --insecure         Fetch Data over plaintext
-  -r, --repos strings    list of repositories to scan on the registry. If blank, pilreg will attempt to enumerate them using the catalog API
-  -o, --results string   Path to directory for storing results. If blank, outputs configs and manifests as json object to Stdout.(must be used if 'store-images` is enabled)
-  -k, --skip-tls         Disables TLS certificate verification
+Registry config options:
+  -r, --repos strings   list of repositories to scan on the registry. If blank, pilreg will attempt to enumerate them using the catalog API
+  -t, --tags strings    list of tags to scan on each repository. If blank, pilreg will attempt to enumerate them using the tags API
+
+Storage config options:
+  -o, --results string   Path to directory for storing results. If blank, outputs configs and manifests as json object to Stdout.(must be used if 'store-images' is enabled)
   -s, --store-images     Downloads filesystem for discovered images and stores an archive in the output directory (Disabled by default, requires --results to be set)
-  -t, --tags strings     list of tags to scan on each repository. If blank, pilreg will attempt to enumerate them using the tags API
-  -x, --trufflehog       Integrate with Trufflehog to scan the images once they are found
-  -w, --workers int      Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled) (default 8)
+  -c, --cache string     Path to cache image layers (optional, only used if images are pulled)
+  -w, --whiteout         Include whiteout files when saving filesystem archive
+
+Analysis config options:
+  -x, --trufflehog   Integrate with Trufflehog to scan the images once they are found
+
+Connection options:
+  -k, --skip-tls      Disables TLS certificate verification
+  -i, --insecure      Fetch Data over plaintext
+      --workers int   Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled) (default 8)
+      --version       Print version and exit
 ```
 
 ## Example:

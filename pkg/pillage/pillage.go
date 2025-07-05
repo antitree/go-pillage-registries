@@ -35,6 +35,7 @@ type StorageOptions struct {
 	ResultsPath  string
 	StoreImages  bool
 	CraneOptions []crane.Option
+	Whiteout     bool
 }
 
 // Store a default brute force config file
