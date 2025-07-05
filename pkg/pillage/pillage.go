@@ -253,7 +253,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 		base := filepath.Base(hdr.Name)
 
 		if strings.HasPrefix(base, ".wh.") {
-			log.Print("Fucking whiteout file detected: ", hdr.Name)
+			LogDebug("Whiteout file detected: ", hdr.Name)
 			deletedPath := filepath.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
 			deletedPath = strings.TrimPrefix(deletedPath, string(filepath.Separator))
 
@@ -400,7 +400,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 		base := filepath.Base(hdr.Name)
 
 		if strings.HasPrefix(base, ".wh.") {
-			log.Print("Fucking whiteout file detected: ", hdr.Name)
+			LogDebug("Whiteout file detected: ", hdr.Name)
 			deletedPath := filepath.Join(filepath.Dir(hdr.Name), strings.TrimPrefix(base, ".wh."))
 			deletedPath = strings.TrimPrefix(deletedPath, string(filepath.Separator))
 
