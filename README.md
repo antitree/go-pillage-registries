@@ -45,6 +45,7 @@ Usage:
   --workers	Number of concurrent workers.
   --version	Print version information and exit.
 ```
+If `--local` is not provided and the value for `<registry>` ends with a common tarball extension such as `.tar`, `.tar.gz`, or `.tgz`, `pilreg` will automatically switch to local mode and scan that file.
 
 ## Example:
 
