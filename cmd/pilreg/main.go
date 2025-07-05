@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/authn"
+
 	"github.com/remeh/sizedwaitgroup"
 
 	"github.com/antitree/go-pillage-registries/pkg/pillage"
@@ -33,7 +35,9 @@ var (
 	filterSmall int64
 	showVersion bool
 	debug       bool
-	all         bool // Enable all analysis options by default
+	all         bool   // Enable all analysis options by default
+	token       string // Bearer token or password for auth
+	username    string // Optional username when using token
 )
 
 var (
@@ -69,6 +73,8 @@ func init() {
 	connFlags := pflag.NewFlagSet("Connection Options", pflag.ContinueOnError)
 	connFlags.BoolVarP(&skiptls, "skip-tls", "k", false, "Disable TLS verification.")
 	connFlags.BoolVarP(&insecure, "insecure", "i", false, "Use HTTP instead of HTTPS.")
+	connFlags.StringVar(&token, "token", "", "Registry bearer token or password")
+	connFlags.StringVar(&username, "username", "", "Username for token auth")
 	connFlags.IntVar(&workerCount, "workers", 8, "Number of concurrent workers.")
 	connFlags.BoolVar(&showVersion, "version", false, "Print version information and exit.")
 	connFlags.BoolVar(&debug, "debug", false, "Enable debug logging.")
@@ -140,7 +146,12 @@ func run(cmd *cobra.Command, registries []string) {
 		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
-	craneoptions := pillage.MakeCraneOptions(insecure)
+	var auth authn.Authenticator
+	if token != "" {
+		auth = authn.FromConfig(authn.AuthConfig{Username: username, Password: token})
+	}
+
+	craneoptions := pillage.MakeCraneOptions(insecure, auth)
 
 	storageOptions := &pillage.StorageOptions{
 		StoreImages:  storeImages,
@@ -226,7 +237,7 @@ func init() {
 		printFlags(cmd, []string{"trufflehog", "whiteout"})
 
 		fmt.Println("\n Connection options:")
-		printFlags(cmd, []string{"skip-tls", "insecure", "workers"})
+		printFlags(cmd, []string{"skip-tls", "insecure", "token", "username", "workers"})
 
 		fmt.Println("")
 		printFlags(cmd, []string{"version"})

@@ -42,7 +42,9 @@ Usage:
  Connection options:
   --skip-tls	Disable TLS verification.
   --insecure	Use HTTP instead of HTTPS.
-  --workers	Number of concurrent workers.
+  --token       Bearer token or password for registry auth.
+  --username    Username for token auth.
+  --workers     Number of concurrent workers.
   --version	Print version information and exit.
   --debug       Enable debug logging.
 ```

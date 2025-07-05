@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -69,9 +70,12 @@ type FileVersion struct {
 	Data  []byte
 }
 
-func MakeCraneOptions(insecure bool) (options []crane.Option) {
+func MakeCraneOptions(insecure bool, auth authn.Authenticator) (options []crane.Option) {
 	if insecure {
 		options = append(options, crane.Insecure)
+	}
+	if auth != nil {
+		options = append(options, crane.WithAuth(auth))
 	}
 	return options
 }
