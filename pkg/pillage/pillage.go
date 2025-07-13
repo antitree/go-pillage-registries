@@ -54,7 +54,7 @@ type StorageOptions struct {
 	FilterSmall    int64
 	StoreTarballs  bool
 	WhiteOut       bool
-	WhiteOutFilter bool
+	WhiteOutFilter []string
 }
 
 //go:embed default_config.json
@@ -89,13 +89,12 @@ func securejoin(paths ...string) (out string) {
 }
 
 func shouldFilterWhiteout(name string, options *StorageOptions) bool {
-	if !options.WhiteOutFilter {
+	if len(options.WhiteOutFilter) == 0 {
 		return false
 	}
 	lower := strings.ToLower(name)
-	filters := []string{"tmp", "cache", "apk", "apt"}
-	for _, f := range filters {
-		if strings.Contains(lower, f) {
+	for _, f := range options.WhiteOutFilter {
+		if strings.Contains(lower, strings.ToLower(f)) {
 			return true
 		}
 	}

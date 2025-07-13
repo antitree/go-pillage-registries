@@ -32,7 +32,7 @@ var (
 	workerCount    int
 	truffleHog     bool
 	whiteOut       bool
-	whiteOutFilter bool
+	whiteOutFilter []string
 	filterSmall    int64
 	showVersion    bool
 	debug          bool
@@ -65,7 +65,8 @@ func init() {
 	analysisFlags := pflag.NewFlagSet("Analysis Options", pflag.ContinueOnError)
 	analysisFlags.BoolVarP(&truffleHog, "trufflehog", "x", false, "Scan image contents with TruffleHog.")
 	analysisFlags.BoolVarP(&whiteOut, "whiteout", "w", false, "Look for deleted/whiteout files in image layers.")
-	analysisFlags.BoolVar(&whiteOutFilter, "whiteout-filter", false, "Filter common temporary files when extracting whiteouts.")
+	analysisFlags.StringSliceVar(&whiteOutFilter, "whiteout-filter", nil, "Filter patterns when extracting whiteouts. Defaults to 'tmp,cache,apk,apt'.")
+	analysisFlags.Lookup("whiteout-filter").NoOptDefVal = "tmp,cache,apk,apt"
 	analysisFlags.BoolVarP(&all, "all", "a", true, "Enable all analysis options by default. (Very noisy!)")
 
 	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
@@ -98,7 +99,7 @@ func NormalizeFlags() {
 	if truffleHog && !storeImages {
 		storeImages = true
 	}
-	if whiteOutFilter {
+	if len(whiteOutFilter) > 0 {
 		whiteOut = true
 	}
 
@@ -235,7 +236,7 @@ func init() {
 		fmt.Println("  pilreg <registry> --repos test/nginx:latest")
 		fmt.Println("  pilreg ghcr.io --repos <gh username>/<repo>/<package/image> --username --token <PAT> -a")
 		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout")
-		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout-filter")
+		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout-filter=apk,tmp,test")
 		fmt.Println("  pilreg <registry> --trufflehog")
 
 		fmt.Println("\n Registry/Local config options:")
