@@ -84,7 +84,7 @@ func init() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:     "pilreg <registry>",
+	Use:     "pilreg [registry]",
 	Short:   "pilreg is a tool which queries a docker image registry to enumerate images and collect their metadata and filesystems",
 	Args:    cobra.ArbitraryArgs,
 	Run:     run,
@@ -141,8 +141,7 @@ func run(cmd *cobra.Command, registries []string) {
 		registries = registries[1:]
 	}
 	if len(registries) == 0 && localTar == "" {
-		cmd.Help()
-		return
+		registries = []string{"index.docker.io"}
 	}
 
 	NormalizeFlags()
@@ -208,7 +207,7 @@ func run(cmd *cobra.Command, registries []string) {
 	if outputPath == "" {
 		out, err := json.Marshal(results)
 		if err != nil {
-			log.Fatalf("error formatting results for %s: %v", registry, err)
+			log.Fatalf("error formatting results: %v", err)
 		}
 		fmt.Println(string(out))
 	}
@@ -227,13 +226,14 @@ func CheckTrufflehogInstalled() bool {
 // SetHelpFunc prints grouped help output for categorized flags
 func init() {
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		fmt.Print("Usage: pilreg [OPTIONS] <registry>\n\n")
+		fmt.Print("Usage: pilreg [OPTIONS] [registry]\n\n")
 		fmt.Println("pilreg is penetration testing tool targeting container images hosted in a registry or in a tar ball.")
 
 		fmt.Println("Examples:")
 		fmt.Println("  pilreg 127.0.0.1:5000 -a")
 		fmt.Println("  pilreg <registry> --repos nginx --tags latest,stable")
 		fmt.Println("  pilreg <registry> --repos test/nginx:latest")
+		fmt.Println("  pilreg -r repo/project")
 		fmt.Println("  pilreg ghcr.io --repos <gh username>/<repo>/<package/image> --username --token <PAT> -a")
 		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout")
 		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout-filter=apk,tmp,test")

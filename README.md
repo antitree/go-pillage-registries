@@ -20,16 +20,17 @@ go install ./...
 ## Usage:
 
 ```
-Usage: pilreg <registry> | -l <tarbalpath> [OPTIONS]
+Usage: pilreg [registry] | -l <tarbalpath> [OPTIONS]
 
 pilreg is penetration testing tool targeting container images hosted in a registry or in a tar ball.
 Examples:
   pilreg 127.0.0.1:5000 -a
   pilreg 127.0.0.1:5000 --repos nginx --tags latest,stable
   pilreg <registry> --repos <project>/<my image>:latest
+  pilreg -r repo/project
   pilreg --local <path/to/tarball.tar> --whiteout
   pilreg --local <path/to/tarball.tar> --whiteout-filter=apk,tmp,test
-  pilreg 
+  pilreg
   pilreg <registry> --trufflehog
 
  Registry/Local config options:
