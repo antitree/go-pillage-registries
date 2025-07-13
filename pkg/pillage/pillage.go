@@ -77,6 +77,10 @@ func MakeCraneOptions(insecure bool, auth authn.Authenticator) (options []crane.
 	}
 	if auth != nil {
 		options = append(options, crane.WithAuth(auth))
+	} else {
+		// Fall back to the default keychain so any locally configured Docker
+		// credentials are used automatically.
+		options = append(options, crane.WithAuthFromKeychain(authn.DefaultKeychain))
 	}
 	return options
 }

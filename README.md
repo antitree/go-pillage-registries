@@ -50,7 +50,9 @@ Examples:
  Connection options:
   --skip-tls	Disable TLS verification.
   --insecure	Use HTTP instead of HTTPS.
-  --token	Registry bearer token or password
+  --token       Registry bearer token or password. If omitted, pilreg uses
+                credentials from your local Docker configuration and logs
+                the registry and a snippet of the credential in use.
   --username	Username for token auth
   --workers	Number of concurrent workers.
 
