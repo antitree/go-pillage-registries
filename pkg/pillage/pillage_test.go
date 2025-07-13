@@ -41,8 +41,8 @@ func TestMakeCraneOptions(t *testing.T) {
 		args args
 		want int
 	}{
-		{name: "secure options", args: args{insecure: false}, want: 0},
-		{name: "insecure options", args: args{insecure: true}, want: 1},
+		{name: "secure options", args: args{insecure: false}, want: 1},
+		{name: "insecure options", args: args{insecure: true}, want: 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

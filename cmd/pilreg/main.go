@@ -158,6 +158,8 @@ func run(cmd *cobra.Command, registries []string) {
 			log.Println("⚠️  --token provided without --username; using 'pilreg'. Some registries require a username.")
 		}
 		auth = authn.FromConfig(authn.AuthConfig{Username: username, Password: token})
+	} else {
+		log.Println("ℹ️  no token provided; using local Docker credentials if available")
 	}
 
 	craneoptions := pillage.MakeCraneOptions(insecure, auth)
