@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/random"
@@ -327,6 +328,17 @@ func TestEnumRegistries(t *testing.T) {
 				t.Errorf("expected 1 image, got %d", count)
 			}
 		})
+	}
+}
+
+func TestCredentialSnippet(t *testing.T) {
+	cfg := &authn.AuthConfig{Username: "user", Password: "secretpass"}
+	got := CredentialSnippet(cfg)
+	if !strings.Contains(got, "user user") || !strings.Contains(got, "pass") {
+		t.Errorf("unexpected snippet: %s", got)
+	}
+	if !strings.Contains(got, "sec") {
+		t.Errorf("credential snippet should contain password prefix, got: %s", got)
 	}
 }
 

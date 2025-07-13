@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
 
 	"github.com/remeh/sizedwaitgroup"
 
@@ -160,6 +161,29 @@ func run(cmd *cobra.Command, registries []string) {
 		auth = authn.FromConfig(authn.AuthConfig{Username: username, Password: token})
 	} else {
 		log.Println("ℹ️  no token provided; using local Docker credentials if available")
+		for _, r := range registries {
+			reg, err := name.NewRegistry(r)
+			if err != nil {
+				log.Printf("   unable to parse registry %s: %v", r, err)
+				continue
+			}
+			a, err := authn.DefaultKeychain.Resolve(reg)
+			if err != nil {
+				log.Printf("   no credentials found for %s", r)
+				continue
+			}
+			cfg, err := a.Authorization()
+			if err != nil {
+				log.Printf("   failed to get credentials for %s: %v", r, err)
+				continue
+			}
+			snip := pillage.CredentialSnippet(cfg)
+			if snip == "anonymous" {
+				log.Printf("   using anonymous access for %s", r)
+			} else {
+				log.Printf("   using credentials for %s (%s)", r, snip)
+			}
+		}
 	}
 
 	craneoptions := pillage.MakeCraneOptions(insecure, auth)
