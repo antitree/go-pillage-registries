@@ -20,24 +20,25 @@ import (
 )
 
 var (
-	repos       []string
-	tags        []string
-	localTar    string
-	skiptls     bool
-	insecure    bool
-	storeImages bool
-	registry    string
-	cachePath   string
-	outputPath  string
-	workerCount int
-	truffleHog  bool
-	whiteOut    bool
-	filterSmall int64
-	showVersion bool
-	debug       bool
-	all         bool   // Enable all analysis options by default
-	token       string // Bearer token or password for auth
-	username    string // Optional username when using token
+	repos          []string
+	tags           []string
+	localTar       string
+	skiptls        bool
+	insecure       bool
+	storeImages    bool
+	registry       string
+	cachePath      string
+	outputPath     string
+	workerCount    int
+	truffleHog     bool
+	whiteOut       bool
+	whiteOutFilter []string
+	filterSmall    int64
+	showVersion    bool
+	debug          bool
+	all            bool   // Enable all analysis options by default
+	token          string // Bearer token or password for auth
+	username       string // Optional username when using token
 )
 
 var (
@@ -64,6 +65,8 @@ func init() {
 	analysisFlags := pflag.NewFlagSet("Analysis Options", pflag.ContinueOnError)
 	analysisFlags.BoolVarP(&truffleHog, "trufflehog", "x", false, "Scan image contents with TruffleHog.")
 	analysisFlags.BoolVarP(&whiteOut, "whiteout", "w", false, "Look for deleted/whiteout files in image layers.")
+	analysisFlags.StringSliceVar(&whiteOutFilter, "whiteout-filter", nil, "Filter patterns when extracting whiteouts. Defaults to 'tmp,cache,apk,apt'.")
+	analysisFlags.Lookup("whiteout-filter").NoOptDefVal = "tmp,cache,apk,apt"
 	analysisFlags.BoolVarP(&all, "all", "a", true, "Enable all analysis options by default. (Very noisy!)")
 
 	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
@@ -95,6 +98,9 @@ func NormalizeFlags() {
 	}
 	if truffleHog && !storeImages {
 		storeImages = true
+	}
+	if len(whiteOutFilter) > 0 {
+		whiteOut = true
 	}
 
 	for i, repo := range repos {
@@ -157,12 +163,13 @@ func run(cmd *cobra.Command, registries []string) {
 	craneoptions := pillage.MakeCraneOptions(insecure, auth)
 
 	storageOptions := &pillage.StorageOptions{
-		StoreImages:  storeImages,
-		CachePath:    cachePath,
-		OutputPath:   outputPath,
-		CraneOptions: craneoptions,
-		WhiteOut:     whiteOut,
-		FilterSmall:  filterSmall,
+		StoreImages:    storeImages,
+		CachePath:      cachePath,
+		OutputPath:     outputPath,
+		CraneOptions:   craneoptions,
+		WhiteOut:       whiteOut,
+		WhiteOutFilter: whiteOutFilter,
+		FilterSmall:    filterSmall,
 	}
 
 	var images <-chan *pillage.ImageData
@@ -229,6 +236,7 @@ func init() {
 		fmt.Println("  pilreg <registry> --repos test/nginx:latest")
 		fmt.Println("  pilreg ghcr.io --repos <gh username>/<repo>/<package/image> --username --token <PAT> -a")
 		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout")
+		fmt.Println("  pilreg --local <path/to/tarball.tar> --whiteout-filter=apk,tmp,test")
 		fmt.Println("  pilreg <registry> --trufflehog")
 
 		fmt.Println("\n Registry/Local config options:")
@@ -238,7 +246,7 @@ func init() {
 		printFlags(cmd, []string{"output", "store-images", "cache", "small"})
 
 		fmt.Println("\n Analysis config options:")
-		printFlags(cmd, []string{"trufflehog", "whiteout"})
+		printFlags(cmd, []string{"trufflehog", "whiteout", "whiteout-filter"})
 
 		fmt.Println("\n Connection options:")
 		printFlags(cmd, []string{"skip-tls", "insecure", "token", "username", "workers"})

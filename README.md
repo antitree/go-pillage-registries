@@ -28,6 +28,7 @@ Examples:
   pilreg 127.0.0.1:5000 --repos nginx --tags latest,stable
   pilreg <registry> --repos <project>/<my image>:latest
   pilreg --local <path/to/tarball.tar> --whiteout
+  pilreg --local <path/to/tarball.tar> --whiteout-filter=apk,tmp,test
   pilreg 
   pilreg <registry> --trufflehog
 
@@ -44,6 +45,7 @@ Examples:
  Analysis config options:
   --trufflehog	Scan image contents with TruffleHog.
   --whiteout	Look for deleted/whiteout files in image layers.
+  --whiteout-filter     Filter patterns when extracting whiteouts. Defaults to 'tmp,cache,apk,apt'.
 
  Connection options:
   --skip-tls	Disable TLS verification.

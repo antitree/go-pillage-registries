@@ -47,13 +47,14 @@ type Manifest struct {
 }
 
 type StorageOptions struct {
-	CachePath     string
-	OutputPath    string
-	StoreImages   bool
-	CraneOptions  []crane.Option
-	FilterSmall   int64
-	StoreTarballs bool
-	WhiteOut      bool
+	CachePath      string
+	OutputPath     string
+	StoreImages    bool
+	CraneOptions   []crane.Option
+	FilterSmall    int64
+	StoreTarballs  bool
+	WhiteOut       bool
+	WhiteOutFilter []string
 }
 
 //go:embed default_config.json
@@ -85,6 +86,19 @@ func securejoin(paths ...string) (out string) {
 		out = filepath.Join(out, filepath.Clean("/"+path))
 	}
 	return out
+}
+
+func shouldFilterWhiteout(name string, options *StorageOptions) bool {
+	if len(options.WhiteOutFilter) == 0 {
+		return false
+	}
+	lower := strings.ToLower(name)
+	for _, f := range options.WhiteOutFilter {
+		if strings.Contains(lower, strings.ToLower(f)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (image *ImageData) Store(options *StorageOptions) error {
@@ -275,6 +289,10 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 			}
 
 			restoreFile := func(name string, data []byte) {
+				if shouldFilterWhiteout(name, storageOptions) {
+					LogDebug("Skipping filtered whiteout file: %s", name)
+					return
+				}
 				if !ensureResultsDir() {
 					return
 				}
@@ -421,6 +439,10 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 			}
 
 			restoreFile := func(name string, data []byte) {
+				if shouldFilterWhiteout(name, storageOptions) {
+					LogDebug("Skipping filtered whiteout file: %s", name)
+					return
+				}
 				if !ensureResultsDir() {
 					return
 				}
