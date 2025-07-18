@@ -66,9 +66,12 @@ type BruteForceConfig struct {
 }
 
 // FileVersion tracks the bytes of a file and the layer it was found in.
+// FileVersion tracks the path to a temporary file containing the bytes of a
+// file and the layer it was found in. Storing file contents on disk avoids
+// keeping all file data in memory while processing large images.
 type FileVersion struct {
 	Layer int
-	Data  []byte
+	Path  string
 }
 
 func MakeCraneOptions(insecure bool, auth authn.Authenticator) (options []crane.Option) {
@@ -127,6 +130,14 @@ func (image *ImageData) Store(options *StorageOptions) error {
 		return err
 	}
 
+	// Temporary directory used to store file versions so that memory usage
+	// does not grow with the size of the image.
+	tempDir := filepath.Join(imagePath, "filecache")
+	if err := os.MkdirAll(tempDir, 0o755); err != nil {
+		return fmt.Errorf("error creating temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
 	if image.Error == nil {
 		if options.WhiteOut || options.StoreImages || options.StoreTarballs {
 			var parsed Manifest
@@ -161,10 +172,10 @@ func (image *ImageData) Store(options *StorageOptions) error {
 				}
 
 				if image.Image != nil {
-					err = EnumLayerFromLayer(image, layerDir, imgLayers[idx], idx+1, options, previousFiles)
+					err = EnumLayerFromLayer(image, layerDir, imgLayers[idx], idx+1, options, previousFiles, tempDir)
 				} else {
 					layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
-					err = EnumLayer(image, layerDir, layerRef, idx+1, options, options.CraneOptions, previousFiles)
+					err = EnumLayer(image, layerDir, layerRef, idx+1, options, options.CraneOptions, previousFiles, tempDir)
 				}
 				if err != nil {
 					LogWarn("Failed processing layer %s: %v", layer.Digest, err)
@@ -186,7 +197,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 	return image.Error
 }
 
-func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]FileVersion) error {
+func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]FileVersion, tempDir string) error {
 	crLayer, err := crane.PullLayer(layerRef, craneOpts...)
 	if err != nil {
 		return fmt.Errorf("pull failed for layer %s: %w", layerRef, err)
@@ -319,8 +330,12 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 
 			// Restore a single file if present
 			if versions, ok := previousFiles[deletedPath]; ok && len(versions) > 0 {
-				data := versions[len(versions)-1].Data
-				restoreFile(deletedPath, data)
+				data, err := os.ReadFile(versions[len(versions)-1].Path)
+				if err != nil {
+					LogInfo("Error reading cached file %s: %v", versions[len(versions)-1].Path, err)
+				} else {
+					restoreFile(deletedPath, data)
+				}
 			} else {
 				LogDebug("No previous version found for deleted file %s", deletedPath)
 			}
@@ -329,7 +344,11 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 			prefix := deletedPath + string(filepath.Separator)
 			for name, versions := range previousFiles {
 				if strings.HasPrefix(name, prefix) && len(versions) > 0 {
-					data := versions[len(versions)-1].Data
+					data, err := os.ReadFile(versions[len(versions)-1].Path)
+					if err != nil {
+						LogInfo("Error reading cached file %s: %v", versions[len(versions)-1].Path, err)
+						continue
+					}
 					restoreFile(name, data)
 				} else {
 					LogDebug("No previous version found for deleted directory file %s", name)
@@ -338,11 +357,19 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 
 			//} else if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeDir {
 		} else {
-			var buf bytes.Buffer
-			if _, err := io.Copy(&buf, tarReader); err == nil {
+			tempFile, err := os.CreateTemp(tempDir, "file-")
+			if err != nil {
+				LogInfo("Error creating temp file for %s: %v", hdr.Name, err)
+				io.Copy(io.Discard, tarReader)
+				continue
+			}
+			if _, err := io.Copy(tempFile, tarReader); err == nil {
+				tempFile.Close()
 				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
-				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
+				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Path: tempFile.Name()})
 			} else {
+				tempFile.Close()
+				os.Remove(tempFile.Name())
 				LogInfo("Error reading file %s from tar: %v", hdr.Name, err)
 				continue
 			}
@@ -352,7 +379,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 	return nil
 }
 
-func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layerNumber int, storageOptions *StorageOptions, previousFiles map[string][]FileVersion) error {
+func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layerNumber int, storageOptions *StorageOptions, previousFiles map[string][]FileVersion, tempDir string) error {
 	rc, err := layer.Compressed()
 	if err != nil {
 		return fmt.Errorf("failed to get compressed stream: %w", err)
@@ -468,8 +495,12 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 			}
 
 			if versions, ok := previousFiles[deletedPath]; ok && len(versions) > 0 {
-				data := versions[len(versions)-1].Data
-				restoreFile(deletedPath, data)
+				data, err := os.ReadFile(versions[len(versions)-1].Path)
+				if err != nil {
+					LogInfo("Error reading cached file %s: %v", versions[len(versions)-1].Path, err)
+				} else {
+					restoreFile(deletedPath, data)
+				}
 			} else {
 				LogDebug("No previous version found for deleted file %s", deletedPath)
 			}
@@ -477,7 +508,11 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 			prefix := deletedPath + string(filepath.Separator)
 			for name, versions := range previousFiles {
 				if strings.HasPrefix(name, prefix) && len(versions) > 0 {
-					data := versions[len(versions)-1].Data
+					data, err := os.ReadFile(versions[len(versions)-1].Path)
+					if err != nil {
+						LogInfo("Error reading cached file %s: %v", versions[len(versions)-1].Path, err)
+						continue
+					}
 					restoreFile(name, data)
 				} else {
 					LogDebug("No previous version found for deleted directory file %s", name)
@@ -485,11 +520,19 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 			}
 
 		} else {
-			var buf bytes.Buffer
-			if _, err := io.Copy(&buf, tarReader); err == nil {
+			tempFile, err := os.CreateTemp(tempDir, "file-")
+			if err != nil {
+				LogInfo("Error creating temp file for %s: %v", hdr.Name, err)
+				io.Copy(io.Discard, tarReader)
+				continue
+			}
+			if _, err := io.Copy(tempFile, tarReader); err == nil {
+				tempFile.Close()
 				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
-				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Data: buf.Bytes()})
+				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Path: tempFile.Name()})
 			} else {
+				tempFile.Close()
+				os.Remove(tempFile.Name())
 				LogInfo("Error reading file %s from tar: %v", hdr.Name, err)
 				continue
 			}
