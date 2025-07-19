@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -40,6 +41,7 @@ var (
 	all            bool   // Enable all analysis options by default
 	token          string // Bearer token or password for auth
 	username       string // Optional username when using token
+	hashIndex      *pillage.HashIndex
 )
 
 var (
@@ -148,6 +150,13 @@ func run(cmd *cobra.Command, registries []string) {
 
 	NormalizeFlags()
 
+	indexFile := filepath.Join(outputPath, "scanned_shas.log")
+	var err error
+	hashIndex, err = pillage.NewHashIndex(indexFile)
+	if err != nil {
+		log.Fatalf("failed to init hash index: %v", err)
+	}
+
 	if skiptls {
 		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
@@ -213,12 +222,22 @@ func run(cmd *cobra.Command, registries []string) {
 
 	for image := range images {
 
+		hash := pillage.ImageHash(image)
+		exists, err := hashIndex.AddIfMissing(hash)
+		if err != nil {
+			log.Printf("failed recording hash: %v", err)
+		}
+		if exists {
+			pillage.LogInfo("Skipping already scanned image %s", image.Reference)
+			continue
+		}
+
 		if outputPath == "." && !whiteOut {
 			results = append(results, image)
 		} else {
 			wg.Add()
-			go func(image *pillage.ImageData) {
-				image.Store(storageOptions)
+			go func(img *pillage.ImageData) {
+				img.Store(storageOptions)
 				wg.Done()
 			}(image)
 		}
