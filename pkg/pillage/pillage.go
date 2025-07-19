@@ -12,9 +12,11 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/cache"
 )
 
@@ -24,6 +26,7 @@ type ImageData struct {
 	Registry   string
 	Repository string
 	Tag        string
+	Digest     string
 	Manifest   string
 	Config     string
 	Error      error
@@ -97,6 +100,20 @@ func (image *ImageData) Store(options *StorageOptions) error {
 		}
 	}
 
+	//store docker history at top level using digest
+	if image.Digest != "" && image.Config != "" {
+		var cfg v1.ConfigFile
+		if err := json.Unmarshal([]byte(image.Config), &cfg); err == nil {
+			historyBytes, err := json.MarshalIndent(cfg.History, "", "  ")
+			if err == nil {
+				historyPath := filepath.Join(options.ResultsPath, image.Digest+".history")
+				if err := ioutil.WriteFile(historyPath, historyBytes, os.ModePerm); err != nil {
+					log.Printf("Error writing history file %s: %v", historyPath, err)
+				}
+			}
+		}
+	}
+
 	//pull and save the image if asked
 	if image.Error == nil && options.StoreImages {
 
@@ -144,6 +161,13 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 			Registry:   reg,
 			Repository: repo,
 			Tag:        tag,
+		}
+
+		digest, err := crane.Digest(ref, options...)
+		if err == nil {
+			result.Digest = strings.TrimPrefix(digest, "sha256:")
+		} else {
+			log.Printf("Error fetching digest for image %s: %s", ref, err)
 		}
 
 		manifest, err := crane.Manifest(ref, options...)

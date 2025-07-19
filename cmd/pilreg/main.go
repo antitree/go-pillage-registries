@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/remeh/sizedwaitgroup"
 
@@ -72,6 +73,14 @@ func run(_ *cobra.Command, registries []string) {
 	wg := sizedwaitgroup.New(workerCount)
 
 	for image := range images {
+		if resultsPath != "" && image.Digest != "" {
+			historyPath := filepath.Join(resultsPath, image.Digest+".history")
+			if _, err := os.Stat(historyPath); err == nil {
+				log.Printf("Skipping previously scanned image %s", image.Reference)
+				continue
+			}
+		}
+
 		if resultsPath == "" {
 			results = append(results, image)
 		} else {

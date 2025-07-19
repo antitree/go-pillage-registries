@@ -37,6 +37,11 @@ Flags:
   -w, --workers int      Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled) (default 8)
 ```
 
+When a results directory is supplied, `pilreg` stores the Docker history for each
+scanned image in a file named `<sha256>.history` in the root of that directory.
+If such a file already exists before scanning an image, the scan is skipped and
+an informational message is logged.
+
 ## Example:
 
 In the [example directory](example/) there is an example of an image which
