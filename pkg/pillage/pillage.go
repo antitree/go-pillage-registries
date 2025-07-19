@@ -32,6 +32,7 @@ type ImageData struct {
 	Registry   string
 	Repository string
 	Tag        string
+	Digest     string
 	Manifest   string
 	Config     string
 	Error      error
@@ -111,6 +112,15 @@ func shouldFilterWhiteout(name string, options *StorageOptions) bool {
 func (image *ImageData) Store(options *StorageOptions) error {
 	LogInfo("Pulling image layers for: %s", image.Reference)
 	var imagePath string
+
+	if options.OutputPath != "" && image.Digest != "" {
+		historyDir := filepath.Join(options.OutputPath, "results")
+		historyPath := filepath.Join(historyDir, strings.TrimPrefix(image.Digest, "sha256:"))
+		if _, err := os.Stat(historyPath); err == nil {
+			LogInfo("Skipping previously scanned image %s", image.Reference)
+			return nil
+		}
+	}
 
 	if options.CachePath == "." {
 		tmpDir, err := os.MkdirTemp("", "pilreg-tmp-")
@@ -192,6 +202,24 @@ func (image *ImageData) Store(options *StorageOptions) error {
 		err := os.WriteFile(errorPath, []byte(image.Error.Error()), os.ModePerm)
 		if err != nil {
 			return fmt.Errorf("error making error file %s: %v", errorPath, err)
+		}
+	}
+
+	if image.Error == nil && options.OutputPath != "" && image.Digest != "" {
+		historyDir := filepath.Join(options.OutputPath, "results")
+		historyPath := filepath.Join(historyDir, strings.TrimPrefix(image.Digest, "sha256:"))
+		if err := os.MkdirAll(historyDir, 0755); err == nil {
+			var historyData []byte
+			var cfg map[string]interface{}
+			if err := json.Unmarshal([]byte(image.Config), &cfg); err == nil {
+				if h, ok := cfg["history"]; ok {
+					historyData, _ = json.MarshalIndent(h, "", "  ")
+				}
+			}
+			if len(historyData) == 0 {
+				historyData = []byte(image.Config)
+			}
+			os.WriteFile(historyPath, historyData, 0644)
 		}
 	}
 	return image.Error
@@ -616,6 +644,13 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 		}
 		result.Config = string(config)
 
+		digest, err := crane.Digest(ref, options...)
+		if err != nil {
+			LogInfo("Error fetching digest for image %s: %v", ref, err)
+		} else {
+			result.Digest = digest
+		}
+
 		out <- result
 	}(ref)
 
@@ -815,6 +850,12 @@ func EnumTarball(tarPath string) <-chan *ImageData {
 					continue
 				}
 
+				d, err := img.Digest()
+				var digest string
+				if err == nil {
+					digest = d.String()
+				}
+
 				sanitizedRef := fmt.Sprintf("%s:%s", tag.Repository.RepositoryStr(), tag.TagStr())
 
 				out <- &ImageData{
@@ -822,6 +863,7 @@ func EnumTarball(tarPath string) <-chan *ImageData {
 					Registry:   tag.RegistryStr(),
 					Repository: tag.RepositoryStr(),
 					Tag:        tag.TagStr(),
+					Digest:     digest,
 					Manifest:   string(man),
 					Config:     string(cfg),
 					Image:      img,

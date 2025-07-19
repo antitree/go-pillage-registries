@@ -168,6 +168,23 @@ func TestImageData_Store(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "skip when history exists",
+			image: &ImageData{
+				Reference:  "dummy.io/test/image:latest",
+				Registry:   "dummy.io",
+				Repository: "test/image",
+				Tag:        "latest",
+				Digest:     "sha256:deadbeef",
+			},
+			options: func() *StorageOptions {
+				opt := &StorageOptions{CachePath: t.TempDir(), OutputPath: t.TempDir(), StoreImages: true}
+				os.MkdirAll(filepath.Join(opt.OutputPath, "results"), 0755)
+				os.WriteFile(filepath.Join(opt.OutputPath, "results", "deadbeef"), []byte("history"), 0644)
+				return opt
+			}(),
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
