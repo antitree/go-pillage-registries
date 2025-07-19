@@ -62,6 +62,27 @@ func (h *HashIndex) Add(hash string) error {
 	return nil
 }
 
+// AddIfMissing checks if the hash exists and records it atomically.
+// It returns true if the hash was already present.
+func (h *HashIndex) AddIfMissing(hash string) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, ok := h.set[hash]; ok {
+		return true, nil
+	}
+	f, err := os.OpenFile(h.path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		return false, err
+	}
+	if _, err := f.WriteString(hash + "\n"); err != nil {
+		f.Close()
+		return false, err
+	}
+	f.Close()
+	h.set[hash] = struct{}{}
+	return false, nil
+}
+
 // ImageHash returns the SHA256 of the image's manifest.
 func ImageHash(img *ImageData) string {
 	sum := sha256.Sum256([]byte(img.Manifest))

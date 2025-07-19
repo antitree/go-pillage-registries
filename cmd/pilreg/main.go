@@ -223,25 +223,23 @@ func run(cmd *cobra.Command, registries []string) {
 	for image := range images {
 
 		hash := pillage.ImageHash(image)
-		if hashIndex.Exists(hash) {
+		exists, err := hashIndex.AddIfMissing(hash)
+		if err != nil {
+			log.Printf("failed recording hash: %v", err)
+		}
+		if exists {
 			pillage.LogInfo("Skipping already scanned image %s", image.Reference)
 			continue
 		}
 
 		if outputPath == "." && !whiteOut {
 			results = append(results, image)
-			if err := hashIndex.Add(hash); err != nil {
-				log.Printf("failed recording hash: %v", err)
-			}
 		} else {
 			wg.Add()
-			go func(img *pillage.ImageData, h string) {
+			go func(img *pillage.ImageData) {
 				img.Store(storageOptions)
-				if err := hashIndex.Add(h); err != nil {
-					log.Printf("failed recording hash: %v", err)
-				}
 				wg.Done()
-			}(image, hash)
+			}(image)
 		}
 
 		if truffleHog && CheckTrufflehogInstalled() {
