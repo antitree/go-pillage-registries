@@ -32,6 +32,7 @@ type ImageData struct {
 	Registry   string
 	Repository string
 	Tag        string
+	Digest     string
 	Manifest   string
 	Config     string
 	Error      error
@@ -111,6 +112,15 @@ func shouldFilterWhiteout(name string, options *StorageOptions) bool {
 func (image *ImageData) Store(options *StorageOptions) error {
 	LogInfo("Pulling image layers for: %s", image.Reference)
 	var imagePath string
+
+	var digestFile string
+	if image.Digest != "" && options.OutputPath != "" {
+		digestFile = filepath.Join(options.OutputPath, "results", strings.ReplaceAll(image.Digest, ":", "_"))
+		if _, err := os.Stat(digestFile); err == nil {
+			LogInfo("Skipping already scanned image %s", image.Reference)
+			return nil
+		}
+	}
 
 	if options.CachePath == "." {
 		tmpDir, err := os.MkdirTemp("", "pilreg-tmp-")
@@ -193,6 +203,17 @@ func (image *ImageData) Store(options *StorageOptions) error {
 		if err != nil {
 			return fmt.Errorf("error making error file %s: %v", errorPath, err)
 		}
+	}
+	if digestFile != "" {
+		var historyData []byte
+		var cfg map[string]interface{}
+		if err := json.Unmarshal([]byte(image.Config), &cfg); err == nil {
+			if h, ok := cfg["history"]; ok {
+				historyData, _ = json.MarshalIndent(h, "", "  ")
+			}
+		}
+		os.MkdirAll(filepath.Dir(digestFile), 0755)
+		os.WriteFile(digestFile, historyData, 0644)
 	}
 	return image.Error
 }
@@ -603,6 +624,12 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 			}
 			return err
 		})
+		digest, derr := crane.Digest(ref, options...)
+		if derr == nil {
+			result.Digest = digest
+		} else {
+			LogDebug("Failed to get digest for %s: %v", ref, derr)
+		}
 		//config, err := crane.Config(ref, options...)
 		if err != nil {
 			LogInfo("Error fetching config for image %s: %s (the config may be in the manifest itself)", ref, err)
@@ -803,6 +830,8 @@ func EnumTarball(tarPath string) <-chan *ImageData {
 					out <- &ImageData{Reference: tagStr, Error: err}
 					continue
 				}
+				dig, _ := img.Digest()
+				digest := dig.String()
 
 				man, err := img.RawManifest()
 				if err != nil {
@@ -824,6 +853,7 @@ func EnumTarball(tarPath string) <-chan *ImageData {
 					Tag:        tag.TagStr(),
 					Manifest:   string(man),
 					Config:     string(cfg),
+					Digest:     digest,
 					Image:      img,
 				}
 			}
