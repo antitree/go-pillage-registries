@@ -61,6 +61,8 @@ Examples:
 ```
 If `--local` is not provided and the value for `<registry>` ends with a common tarball extension such as `.tar`, `.tar.gz`, or `.tgz`, `pilreg` will automatically switch to local mode and scan that file.
 
+When pilreg completes a scan it saves the Docker image history in a file named with the image's sha256 digest under `<output>/results/`. If this file is found on a subsequent run, the image is skipped and not scanned again.
+
 ## Example:
 
 In the [example directory](example/) there is an example of an image which
