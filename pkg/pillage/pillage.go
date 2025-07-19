@@ -110,21 +110,23 @@ func shouldFilterWhiteout(name string, options *StorageOptions) bool {
 
 func (image *ImageData) Store(options *StorageOptions) error {
 	LogInfo("Pulling image layers for: %s", image.Reference)
-	var imagePath string
 
-	if options.CachePath == "." {
+	// Work on a copy of the options so concurrent calls do not race.
+	opts := *options
+	var cachePath string
+	if opts.CachePath == "." {
 		tmpDir, err := os.MkdirTemp("", "pilreg-tmp-")
 		if err != nil {
 			fmt.Println("Failed to create temp dir:", err)
 			return err
 		}
-
 		defer os.RemoveAll(tmpDir) // clean up
-
-		options.CachePath = tmpDir
+		cachePath = tmpDir
+	} else {
+		cachePath = opts.CachePath
 	}
 
-	imagePath = filepath.Join(options.CachePath, securejoin(image.Registry, image.Repository, image.Tag))
+	imagePath := filepath.Join(cachePath, securejoin(image.Registry, image.Repository, image.Tag))
 	if err := os.MkdirAll(imagePath, os.ModePerm); err != nil {
 		LogInfo("Error making storage path %s: %v", imagePath, err)
 		return err
@@ -139,7 +141,7 @@ func (image *ImageData) Store(options *StorageOptions) error {
 	defer os.RemoveAll(tempDir)
 
 	if image.Error == nil {
-		if options.WhiteOut || options.StoreImages || options.StoreTarballs {
+		if opts.WhiteOut || opts.StoreImages || opts.StoreTarballs {
 			var parsed Manifest
 			err := json.Unmarshal([]byte(image.Manifest), &parsed)
 			if err != nil {
@@ -172,10 +174,10 @@ func (image *ImageData) Store(options *StorageOptions) error {
 				}
 
 				if image.Image != nil {
-					err = EnumLayerFromLayer(image, layerDir, imgLayers[idx], idx+1, options, previousFiles, tempDir)
+					err = EnumLayerFromLayer(image, layerDir, imgLayers[idx], idx+1, &opts, previousFiles, tempDir)
 				} else {
 					layerRef := fmt.Sprintf("%s@%s", image.Reference, layer.Digest)
-					err = EnumLayer(image, layerDir, layerRef, idx+1, options, options.CraneOptions, previousFiles, tempDir)
+					err = EnumLayer(image, layerDir, layerRef, idx+1, &opts, opts.CraneOptions, previousFiles, tempDir)
 				}
 				if err != nil {
 					LogWarn("Failed processing layer %s: %v", layer.Digest, err)
