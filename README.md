@@ -46,6 +46,7 @@ Examples:
   --trufflehog	Scan image contents with TruffleHog.
   --whiteout	Look for deleted/whiteout files in image layers.
   --whiteout-filter     Filter patterns when extracting whiteouts. Defaults to 'tmp,cache,apk,apt'.
+                        Files that are empty regular files are also skipped.
 
  Connection options:
   --skip-tls	Disable TLS verification.

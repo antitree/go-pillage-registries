@@ -70,8 +70,9 @@ type BruteForceConfig struct {
 // file and the layer it was found in. Storing file contents on disk avoids
 // keeping all file data in memory while processing large images.
 type FileVersion struct {
-	Layer int
-	Path  string
+	Layer    int
+	Path     string
+	TypeFlag byte
 }
 
 func MakeCraneOptions(insecure bool, auth authn.Authenticator) (options []crane.Option) {
@@ -305,9 +306,13 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				return true
 			}
 
-			restoreFile := func(name string, data []byte) {
+			restoreFile := func(name string, data []byte, typ byte) {
 				if shouldFilterWhiteout(name, storageOptions) {
 					LogDebug("Skipping filtered whiteout file: %s", name)
+					return
+				}
+				if len(data) == 0 && typ == tar.TypeReg {
+					LogDebug("Skipping empty file: %s", name)
 					return
 				}
 				if !ensureResultsDir() {
@@ -336,7 +341,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				if err != nil {
 					LogInfo("Error reading cached file %s: %v", versions[len(versions)-1].Path, err)
 				} else {
-					restoreFile(deletedPath, data)
+					restoreFile(deletedPath, data, versions[len(versions)-1].TypeFlag)
 				}
 			} else {
 				LogDebug("No previous version found for deleted file %s", deletedPath)
@@ -351,7 +356,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 						LogInfo("Error reading cached file %s: %v", versions[len(versions)-1].Path, err)
 						continue
 					}
-					restoreFile(name, data)
+					restoreFile(name, data, versions[len(versions)-1].TypeFlag)
 				} else {
 					LogDebug("No previous version found for deleted directory file %s", name)
 				}
@@ -368,7 +373,7 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 			if _, err := io.Copy(tempFile, tarReader); err == nil {
 				tempFile.Close()
 				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
-				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Path: tempFile.Name()})
+				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Path: tempFile.Name(), TypeFlag: hdr.Typeflag})
 			} else {
 				tempFile.Close()
 				os.Remove(tempFile.Name())
@@ -471,9 +476,13 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 				return true
 			}
 
-			restoreFile := func(name string, data []byte) {
+			restoreFile := func(name string, data []byte, typ byte) {
 				if shouldFilterWhiteout(name, storageOptions) {
 					LogDebug("Skipping filtered whiteout file: %s", name)
+					return
+				}
+				if len(data) == 0 && typ == tar.TypeReg {
+					LogDebug("Skipping empty file: %s", name)
 					return
 				}
 				if !ensureResultsDir() {
@@ -501,7 +510,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 				if err != nil {
 					LogInfo("Error reading cached file %s: %v", versions[len(versions)-1].Path, err)
 				} else {
-					restoreFile(deletedPath, data)
+					restoreFile(deletedPath, data, versions[len(versions)-1].TypeFlag)
 				}
 			} else {
 				LogDebug("No previous version found for deleted file %s", deletedPath)
@@ -515,7 +524,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 						LogInfo("Error reading cached file %s: %v", versions[len(versions)-1].Path, err)
 						continue
 					}
-					restoreFile(name, data)
+					restoreFile(name, data, versions[len(versions)-1].TypeFlag)
 				} else {
 					LogDebug("No previous version found for deleted directory file %s", name)
 				}
@@ -531,7 +540,7 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 			if _, err := io.Copy(tempFile, tarReader); err == nil {
 				tempFile.Close()
 				name := strings.TrimPrefix(hdr.Name, string(filepath.Separator))
-				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Path: tempFile.Name()})
+				previousFiles[name] = append(previousFiles[name], FileVersion{Layer: layerNumber, Path: tempFile.Name(), TypeFlag: hdr.Typeflag})
 			} else {
 				tempFile.Close()
 				os.Remove(tempFile.Name())
