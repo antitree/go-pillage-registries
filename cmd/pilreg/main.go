@@ -329,14 +329,18 @@ func init() {
 }
 
 func printFlags(cmd *cobra.Command, names []string) {
+	const padWidth = 24
 	for _, name := range names {
 		if flag := cmd.Flag(name); flag != nil {
-			// include shorthand if available
+			// build combined flag string
+			var flagText string
 			if flag.Shorthand != "" {
-				fmt.Printf("  -%s, --%s\t%s\n", flag.Shorthand, flag.Name, flag.Usage)
+				flagText = fmt.Sprintf("-%s, --%s", flag.Shorthand, flag.Name)
 			} else {
-				fmt.Printf("      --%s\t%s\n", flag.Name, flag.Usage)
+				flagText = fmt.Sprintf("    --%s", flag.Name)
 			}
+			// align descriptions in a single column
+			fmt.Printf("  %-*s %s\n", padWidth, flagText, flag.Usage)
 		}
 	}
 }
