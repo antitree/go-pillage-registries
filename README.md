@@ -104,8 +104,8 @@ pilreg --autocomplete powershell > pilreg.ps1
 
 ## Example:
 
-In the [example directory](example/) there is an example of an image which
-Docker image that is a server that has a secret.
+In the [examples directory](docs/examples/) there is a demo Dockerfile that builds an image
+with hidden (whiteout) secrets for testing the `--whiteout` feature.
 
 ## Acknowledgments
 * Thanks to @jmakinen-ncc the original author of NCC Group's go-registry-pillage

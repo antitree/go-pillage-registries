@@ -1,0 +1,18 @@
+FROM alpine:3.18
+
+# Layer 1: Add a fake whiteout file (decoy #1)
+# This file is named like a whiteout but is just a regular file with fake content
+RUN echo "CTF{nope_not_here}" | base64 > /.wh.decoy1.txt
+
+# Layer 2: Add the real flag
+RUN mkdir -p /deep/hide && echo "CTF{real_flag_hidden_here}" | base64 > /deep/hide/flag.txt
+
+# Layer 3: Delete the real flag — this creates a whiteout for flag.txt
+RUN rm /deep/hide/flag.txt
+
+# Layer 4: Add another fake whiteout (decoy #2)
+RUN echo "Just another ghost" | base64 > /.wh.decoy2.txt
+
+# Layer 5: Add distraction content
+RUN echo "Nothing to see here. Everything's clean." > /README.md
+
