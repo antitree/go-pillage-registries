@@ -38,6 +38,17 @@ jobs:
             done
           done
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v2
+
+      - name: Sign release archives
+        run: |
+          for f in dist/*.tar.gz; do
+            cosign sign-blob --key ${{ secrets.COSIGN_KEY }} --signature "$f.sig" "$f"
+          done
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -60,3 +71,10 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
             ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
+
+      - name: Sign Docker images with Cosign
+        run: |
+          cosign sign --key ${{ secrets.COSIGN_KEY }} ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
+          cosign sign --key ${{ secrets.COSIGN_KEY }} ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
