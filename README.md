@@ -17,6 +17,19 @@ go install ./...
 
 ```
 
+### Homebrew
+
+If you maintain a Homebrew tap, copy `Formula/pilreg.rb` from this
+repository into the `Formula` directory of your tap. Once pushed, users can
+run:
+
+```bash
+brew tap <your_tap_name>
+brew install pilreg
+```
+
+Running `brew search registry pillage` will then list the `pilreg` formula.
+
 ## Usage:
 
 ```
