@@ -75,6 +75,24 @@ Examples:
 ```
 If `--local` is not provided and the value for `<registry>` ends with a common tarball extension such as `.tar`, `.tar.gz`, or `.tgz`, `pilreg` will automatically switch to local mode and scan that file.
 
+## Shell Autocomplete
+
+To generate a shell completion script, invoke pilreg with `--autocomplete` and your shell name (bash, zsh, fish or powershell). For example:
+
+```bash
+# Bash:
+pilreg --autocomplete bash > /etc/bash_completion.d/pilreg
+
+# Zsh (Oh My Zsh):
+pilreg --autocomplete zsh > ${fpath[1]}/_pilreg
+
+# Fish:
+pilreg --autocomplete fish | source
+
+# PowerShell:
+pilreg --autocomplete powershell > pilreg.ps1
+```
+
 ## Example:
 
 In the [example directory](example/) there is an example of an image which
