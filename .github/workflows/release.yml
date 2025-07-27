@@ -53,7 +53,6 @@ jobs:
       - name: Sign release archives (keyless)
         run: |
           cosign initialize
-          cosign whoami
           for f in dist/*.tar.gz; do
             COSIGN_YES=true cosign sign-blob --output-signature "$f.sig" "$f"
           done
@@ -84,6 +83,5 @@ jobs:
       - name: Sign Docker images with Cosign (keyless)
         run: |
           cosign initialize
-          cosign whoami
           COSIGN_YES=true cosign sign ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
           COSIGN_YES=true cosign sign ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
