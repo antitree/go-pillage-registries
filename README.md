@@ -17,28 +17,69 @@ go install ./...
 
 ```
 
+### Homebrew
+
+If you maintain a Homebrew tap, copy `Formula/pilreg.rb` from this
+repository into the `Formula` directory of your tap. Once pushed, users can
+run:
+
+```bash
+brew tap <your_tap_name>
+brew install pilreg
+```
+
+Running `brew search registry pillage` will then list the `pilreg` formula.
+
 ## Usage:
 
 ```
-$ pilreg
-Usage:
-  pilreg <registry> [flags]
+Usage: pilreg <registry> | -l <tarbalpath> [OPTIONS]
 
-Flags:
-  -c, --cache string     Path to cache image layers (optional, only used if images are pulled)
-  -h, --help             help for pilreg
-  -i, --insecure         Fetch Data over plaintext
-  -r, --repos strings    list of repositories to scan on the registry. If blank, pilreg will attempt to enumerate them using the catalog API
-  -o, --results string   Path to directory for storing results. If blank, outputs configs and manifests as json object to Stdout.(must be used if 'store-images` is enabled)
-  -k, --skip-tls         Disables TLS certificate verification
-  -s, --store-images     Downloads filesystem for discovered images and stores an archive in the output directory (Disabled by default, requires --results to be set)
-  -t, --tags strings     list of tags to scan on each repository. If blank, pilreg will attempt to enumerate them using the tags API
-  -x, --trufflehog       Integrate with Trufflehog to scan the images once they are found
-  -w, --workers int      Number of workers when pulling images. If set too high, this may cause errors. (optional, only used if images are pulled) (default 8)
+pilreg is penetration testing tool targeting container images hosted in a registry or in a tar ball.
+Examples:
+  pilreg 127.0.0.1:5000 -a
+  pilreg 127.0.0.1:5000 --repos nginx --tags latest,stable
+  pilreg <registry> --repos <project>/<my image>:latest
+  pilreg --local <path/to/tarball.tar> --whiteout
+  pilreg --local <path/to/tarball.tar> --whiteout-filter=apk,tmp,test
+  pilreg 
+  pilreg <registry> --trufflehog
+
+ Registry/Local config options:
+  --repos	List of repositories to scan. If blank, uses the registry's catalog API.
+  --tags	List of tags to scan per repository. If blank, uses the tags API.
+  --local	Path to a local image tarball to scan.
+
+ Storage config options:
+  --output	Directory to store output. Required with --store-images.(./results/ by default)
+  --store-images	Download and store image filesystems.
+  --cache	Path to cache image layers. (/tmp by default)
+
+ Analysis config options:
+  --trufflehog	Scan image contents with TruffleHog.
+  --whiteout	Look for deleted/whiteout files in image layers.
+  --whiteout-filter     Filter patterns when extracting whiteouts. Defaults to 'tmp,cache,apk,apt'.
+                        Files that are empty regular files are also skipped.
+
+ Connection options:
+  --skip-tls	Disable TLS verification.
+  --insecure	Use HTTP instead of HTTPS.
+  --token       Registry bearer token or password. If omitted, pilreg uses
+                credentials from your local Docker configuration and logs
+                the registry and a snippet of the credential in use.
+  --username	Username for token auth
+  --workers	Number of concurrent workers.
+
+  --version	Print version information and exit.
+  --debug	Enable debug logging.
 ```
+If `--local` is not provided and the value for `<registry>` ends with a common tarball extension such as `.tar`, `.tar.gz`, or `.tgz`, `pilreg` will automatically switch to local mode and scan that file.
 
 ## Example:
 
 In the [example directory](example/) there is an example of an image which
 Docker image that is a server that has a secret.
 
+## Acknowledgments
+* Thanks to @jmakinen-ncc the original author of NCC Group's go-registry-pillage
+* @jonjohnsonjr: For the idea around the whiteout file feature (and writing Crane)

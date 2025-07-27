@@ -1,0 +1,47 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug Pillage",
+        "type": "go",
+        "request": "launch",
+        "mode": "auto",
+        "program": "${workspaceFolder}/cmd/pilreg",
+        "env": {},
+        "skipFiles": [
+            "<goroot>/**",         // skips all stdlib
+            "${workspaceFolder}/vendor/**", // skips vendored deps
+            "**/pkg/mod/**"        // skips Go module cache
+        ],
+        "args": ["127.0.0.1:5000", "-r", "keys", "-t", "latest", "-o", "./", "-0"],
+      },
+      {
+        "name": "Debug Pillage Whiteout",
+        "type": "go",
+        "request": "launch",
+        "mode": "auto",
+        "program": "${workspaceFolder}/cmd/pilreg",
+        "env": {},
+        "skipFiles": [
+            "<goroot>/**",         // skips all stdlib
+            "${workspaceFolder}/vendor/**", // skips vendored deps
+            "**/pkg/mod/**"        // skips Go module cache
+        ],
+        "args": ["127.0.0.1:5000", "-r", "white:latest", "--whiteout"],
+      },
+      {
+        "name": "Debug Pillage Localfile",
+        "type": "go",
+        "request": "launch",
+        "mode": "auto",
+        "program": "${workspaceFolder}/cmd/pilreg",
+        "env": {},
+        "skipFiles": [
+            "<goroot>/**",         // skips all stdlib
+            "${workspaceFolder}/vendor/**", // skips vendored deps
+            "**/pkg/mod/**"        // skips Go module cache
+        ],
+        "args": ["--local", "../../example/ctfwhiteout.tar", "--all"],
+      }
+    ]
+}
