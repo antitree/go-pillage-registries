@@ -11,6 +11,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write  # for keyless cosign signing
     steps:
       - uses: actions/checkout@v4
 
@@ -41,21 +42,13 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v2
 
-      # Write the COSIGN_KEY secret to a file so cosign can use it
-      - name: Prepare Cosign key
-        run: |
-          echo "$COSIGN_KEY" > cosign.key
-          chmod 600 cosign.key
-        env:
-          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+      # (keyless) no private key needed; Cosign will use OIDC
 
-      - name: Sign release archives
+      - name: Sign release archives (keyless)
         run: |
           for f in dist/*.tar.gz; do
-            cosign sign-blob --key cosign.key --signature "$f.sig" "$f"
+            cosign sign-blob --keyless --output-signature "$f.sig" "$f"
           done
-        env:
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -80,9 +73,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
             ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
 
-      - name: Sign Docker images with Cosign
+      - name: Sign Docker images with Cosign (keyless)
         run: |
-          cosign sign --key cosign.key ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
-          cosign sign --key cosign.key ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
-        env:
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          cosign sign --keyless ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
+          cosign sign --keyless ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
