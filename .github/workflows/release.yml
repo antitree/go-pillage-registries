@@ -63,11 +63,19 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: dist/*
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v2
+      uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Set up QEMU for multi-arch builds
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      # Create and use a new buildx builder instance
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
