@@ -318,7 +318,8 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 				if !ensureResultsDir() {
 					return
 				}
-				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", name, layerNumber))
+				sanitizedName := strings.TrimPrefix(filepath.Clean("/"+name), "/")
+				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", sanitizedName, layerNumber))
 				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
 					LogInfo("Failed to create dir for %s: %v", restorePath, err)
 					return
@@ -488,7 +489,8 @@ func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layer
 				if !ensureResultsDir() {
 					return
 				}
-				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", name, layerNumber))
+				sanitizedName := strings.TrimPrefix(filepath.Clean("/"+name), "/")
+				restorePath := filepath.Join(resultsDir, fmt.Sprintf("%s.%d", sanitizedName, layerNumber))
 				if err := os.MkdirAll(filepath.Dir(restorePath), 0755); err != nil {
 					LogInfo("Failed to create dir for %s: %v", restorePath, err)
 					return
