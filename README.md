@@ -28,6 +28,19 @@ brew tap <your_tap_name>
 brew install pilreg
 ```
 
+### Docker
+
+If you prefer to run pilreg via Docker instead of installing a binary, you
+can pull and run the official container image:
+
+```bash
+# pull the image (replace tag as needed)
+docker pull ghcr.io/antitree/go-pillage-registries:v2.0.0
+
+# run with --help
+docker run --rm ghcr.io/antitree/go-pillage-registries:v2.0.0 pilreg --help
+```
+
 Running `brew search registry pillage` will then list the `pilreg` formula.
 
 ## Usage:
