@@ -41,10 +41,18 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v2
 
+      # Write the COSIGN_KEY secret to a file so cosign can use it
+      - name: Prepare Cosign key
+        run: |
+          echo "$COSIGN_KEY" > cosign.key
+          chmod 600 cosign.key
+        env:
+          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+
       - name: Sign release archives
         run: |
           for f in dist/*.tar.gz; do
-            cosign sign-blob --key ${{ secrets.COSIGN_KEY }} --signature "$f.sig" "$f"
+            cosign sign-blob --key cosign.key --signature "$f.sig" "$f"
           done
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
@@ -74,7 +82,7 @@ jobs:
 
       - name: Sign Docker images with Cosign
         run: |
-          cosign sign --key ${{ secrets.COSIGN_KEY }} ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
-          cosign sign --key ${{ secrets.COSIGN_KEY }} ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
+          cosign sign --key cosign.key ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
+          cosign sign --key cosign.key ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
