@@ -45,9 +45,9 @@ var (
 )
 
 var (
-	version       = "2.0"
-	buildDate     = "unknown"
-	autocomplete  string // shell type for generating completion script
+	version      = "2.0"
+	buildDate    = "unknown"
+	autocomplete string // shell type for generating completion script
 )
 
 func init() {
@@ -307,32 +307,36 @@ func init() {
 		// Autocomplete flag (hidden in default listing)
 		printFlags(cmd, []string{"autocomplete"})
 	})
-   // Autocomplete handling before running any command
-  rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-    if autocomplete != "" {
-      switch autocomplete {
-      case "bash":
-        _ = rootCmd.GenBashCompletion(os.Stdout)
-      case "zsh":
-        _ = rootCmd.GenZshCompletion(os.Stdout)
-      case "fish":
-        _ = rootCmd.GenFishCompletion(os.Stdout, true)
-      case "powershell":
-        _ = rootCmd.GenPowerShellCompletion(os.Stdout)
-      default:
-        fmt.Fprintf(os.Stderr, "Unsupported shell for autocomplete: %s\n", autocomplete)
-        os.Exit(1)
-      }
-      os.Exit(0)
-    }
-  }
+	// Autocomplete handling before running any command
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if autocomplete != "" {
+			switch autocomplete {
+			case "bash":
+				_ = rootCmd.GenBashCompletion(os.Stdout)
+			case "zsh":
+				_ = rootCmd.GenZshCompletion(os.Stdout)
+			case "fish":
+				_ = rootCmd.GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				_ = rootCmd.GenPowerShellCompletion(os.Stdout)
+			default:
+				fmt.Fprintf(os.Stderr, "Unsupported shell for autocomplete: %s\n", autocomplete)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
+	}
 }
 
 func printFlags(cmd *cobra.Command, names []string) {
 	for _, name := range names {
-		flag := cmd.Flag(name)
-		if flag != nil {
-			fmt.Printf("  --%s	%s\n", flag.Name, flag.Usage)
+		if flag := cmd.Flag(name); flag != nil {
+			// include shorthand if available
+			if flag.Shorthand != "" {
+				fmt.Printf("  -%s, --%s\t%s\n", flag.Shorthand, flag.Name, flag.Usage)
+			} else {
+				fmt.Printf("      --%s\t%s\n", flag.Name, flag.Usage)
+			}
 		}
 	}
 }
