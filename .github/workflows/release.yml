@@ -49,11 +49,13 @@ jobs:
       - name: Clear Sigstore TUF cache
         run: rm -rf ~/.sigstore
 
-      # Sign release archives (keyless)
-      - name: Sign release archives
+      # Keyless Cosign: init OIDC, verify identity, then sign blobs
+      - name: Sign release archives (keyless)
         run: |
+          cosign initialize
+          cosign whoami
           for f in dist/*.tar.gz; do
-            cosign sign-blob --output-signature "$f.sig" "$f"
+            COSIGN_YES=true cosign sign-blob --output-signature "$f.sig" "$f"
           done
 
       - name: Create GitHub Release
@@ -81,5 +83,7 @@ jobs:
 
       - name: Sign Docker images with Cosign (keyless)
         run: |
-          cosign sign ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
-          cosign sign ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
+          cosign initialize
+          cosign whoami
+          COSIGN_YES=true cosign sign ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
+          COSIGN_YES=true cosign sign ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
