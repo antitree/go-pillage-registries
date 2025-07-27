@@ -8,6 +8,9 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # enable keyless signing via Sigstore OIDC
+    env:
+      COSIGN_EXPERIMENTAL: "1"
     permissions:
       contents: read
       packages: write
@@ -42,15 +45,16 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v2
 
-      # (keyless) no private key needed; Cosign will use OIDC
+      # Clear any stale TUF metadata before keyless signing
+      - name: Clear Sigstore TUF cache
+        run: rm -rf ~/.sigstore
 
+      # Sign release archives (keyless)
       - name: Sign release archives
         run: |
           for f in dist/*.tar.gz; do
             cosign sign-blob --output-signature "$f.sig" "$f"
           done
-        env:
-          COSIGN_EXPERIMENTAL: "1"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -75,9 +79,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
             ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
 
-      - name: Sign Docker images with Cosign
+      - name: Sign Docker images with Cosign (keyless)
         run: |
           cosign sign ghcr.io/${{ github.repository_owner }}/go-pillage-registries:latest
           cosign sign ghcr.io/${{ github.repository_owner }}/go-pillage-registries:${{ github.ref_name }}
-        env:
-          COSIGN_EXPERIMENTAL: "1"
