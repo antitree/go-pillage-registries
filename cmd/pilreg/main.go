@@ -304,6 +304,8 @@ func init() {
 		fmt.Println("")
 		printFlags(cmd, []string{"version"})
 		printFlags(cmd, []string{"debug"})
+		// Autocomplete flag (hidden in default listing)
+		printFlags(cmd, []string{"autocomplete"})
 	})
    // Autocomplete handling before running any command
   rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
