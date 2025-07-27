@@ -1,4 +1,4 @@
-# go-pillage-registries
+# go-pillage-registries ( pilreg )
 
 ![go-pillage-registries logo](images/logo-small.png)
 
@@ -7,7 +7,7 @@ This project takes a Docker registry and pillages the manifest and configuration
 It uses Google's [crane](https://github.com/google/go-containerregistry/blob/master/cmd/crane/doc/crane.md) command's package, which should follow docker's keychain semantics.
 If you would like to override this, just change `authn.DefaultKeychain` as described in the <https://github.com/google/go-containerregistry/tree/master/pkg/authn/k8schain>
 
-## Install:
+## Installation
 
 ```bash
 git clone https://github.com/nccgroup/go-pillage-registries.git
@@ -24,7 +24,7 @@ repository into the `Formula` directory of your tap. Once pushed, users can
 run:
 
 ```bash
-brew tap <your_tap_name>
+brew tap antitree/pilreg
 brew install pilreg
 ```
 
@@ -34,14 +34,10 @@ If you prefer to run pilreg via Docker instead of installing a binary, you
 can pull and run the official container image:
 
 ```bash
-# pull the image (replace tag as needed)
 docker pull ghcr.io/antitree/go-pillage-registries:v2.0.0
 
-# run with --help
 docker run --rm ghcr.io/antitree/go-pillage-registries:v2.0.0 pilreg --help
 ```
-
-Running `brew search registry pillage` will then list the `pilreg` formula.
 
 ## Usage:
 
