@@ -45,8 +45,9 @@ var (
 )
 
 var (
-	version   = "2.0"
-	buildDate = "unknown"
+	version      = "2.0"
+	buildDate    = "unknown"
+	autocomplete string // shell type for generating completion script
 )
 
 func init() {
@@ -84,6 +85,10 @@ func init() {
 	connFlags.BoolVar(&showVersion, "version", false, "Print version information and exit.")
 	connFlags.BoolVarP(&debug, "debug", "d", false, "Enable debug logging.")
 	rootCmd.PersistentFlags().AddFlagSet(connFlags)
+	// Autocomplete script generation (bash|zsh|fish|powershell)
+	rootCmd.PersistentFlags().StringVar(&autocomplete, "autocomplete", "", "Generate shell completion script for specified shell (bash|zsh|fish|powershell)")
+	// hide internal use
+	_ = rootCmd.PersistentFlags().MarkHidden("autocomplete")
 }
 
 var rootCmd = &cobra.Command{
@@ -299,14 +304,43 @@ func init() {
 		fmt.Println("")
 		printFlags(cmd, []string{"version"})
 		printFlags(cmd, []string{"debug"})
+		// Autocomplete flag (hidden in default listing)
+		printFlags(cmd, []string{"autocomplete"})
 	})
+	// Autocomplete handling before running any command
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if autocomplete != "" {
+			switch autocomplete {
+			case "bash":
+				_ = rootCmd.GenBashCompletion(os.Stdout)
+			case "zsh":
+				_ = rootCmd.GenZshCompletion(os.Stdout)
+			case "fish":
+				_ = rootCmd.GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				_ = rootCmd.GenPowerShellCompletion(os.Stdout)
+			default:
+				fmt.Fprintf(os.Stderr, "Unsupported shell for autocomplete: %s\n", autocomplete)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
+	}
 }
 
 func printFlags(cmd *cobra.Command, names []string) {
+	const padWidth = 24
 	for _, name := range names {
-		flag := cmd.Flag(name)
-		if flag != nil {
-			fmt.Printf("  --%s	%s\n", flag.Name, flag.Usage)
+		if flag := cmd.Flag(name); flag != nil {
+			// build combined flag string
+			var flagText string
+			if flag.Shorthand != "" {
+				flagText = fmt.Sprintf("-%s, --%s", flag.Shorthand, flag.Name)
+			} else {
+				flagText = fmt.Sprintf("    --%s", flag.Name)
+			}
+			// align descriptions in a single column
+			fmt.Printf("  %-*s %s\n", padWidth, flagText, flag.Usage)
 		}
 	}
 }
