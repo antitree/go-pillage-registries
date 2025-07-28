@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bmatcuk/doublestar"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -101,8 +102,9 @@ func shouldFilterWhiteout(name string, options *StorageOptions) bool {
 		return false
 	}
 	lower := strings.ToLower(name)
-	for _, f := range options.WhiteOutFilter {
-		if strings.Contains(lower, strings.ToLower(f)) {
+	for _, pattern := range options.WhiteOutFilter {
+		match, err := doublestar.PathMatch(strings.ToLower(pattern), lower)
+		if err == nil && match {
 			return true
 		}
 	}

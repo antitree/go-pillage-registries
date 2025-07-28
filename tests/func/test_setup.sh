@@ -39,8 +39,8 @@ docker push ${LOCAL_IMAGE} || {
     exit 1
 }
 
-echo "Building example keys image from examples/Dockerfile.keys..."
-pushd example > /dev/null
+echo "Building example keys image from docs/examples/Dockerfile.keys..."
+pushd docs/examples > /dev/null
 docker build -f Dockerfile.keys -t ${KEYS_IMAGE} . || {
     echo "Failed to build keys image"
     exit 1
@@ -53,9 +53,22 @@ docker push ${KEYS_IMAGE} || {
     exit 1
 }
 
-echo "Saving keys image to example/keys.tar for local tests..."
-docker save ${KEYS_IMAGE} -o example/keys.tar || {
+echo "Saving keys image to docs/examples/keys.tar for local tests..."
+docker save ${KEYS_IMAGE} -o docs/examples/keys.tar || {
     echo "Failed to save keys image tarball"
+    exit 1
+}
+
+# Build and push whiteout demo image for filtering tests
+DEMO_IMAGE="localhost:${REGISTRY_PORT}/whiteout-demo"
+echo "Building whiteout demo image from docs/examples/Dockerfile.wh.wh..."
+docker build -f docs/examples/Dockerfile.wh.wh -t whiteout-demo docs/examples || {
+    echo "Failed to build whiteout demo image"
+    exit 1
+}
+docker tag whiteout-demo ${DEMO_IMAGE}
+docker push ${DEMO_IMAGE} || {
+    echo "Failed to push whiteout demo image"
     exit 1
 }
 

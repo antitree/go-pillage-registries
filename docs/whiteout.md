@@ -54,3 +54,12 @@ Now you can decode the base64 to read the flag:
 echo Q1RGe3JlYWxfZmxhZ192aWRpZGVuX2hlcmV9 | base64 -d
 # prints CTF{real_flag_hidden_here}
 ```
+
+## Filtering Default Whiteouts
+
+To reduce noise from common temporary or package files, you can supply the flag without any values to apply built-in default patterns:
+
+```bash
+# Use --whiteout-filter with no arguments to enable default filters
+pilreg --whiteout --whiteout-filter 127.0.0.1:5000/whiteout-demo
+```

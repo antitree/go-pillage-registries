@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/bmatcuk/doublestar v1.3.4
 	github.com/containerd/stargz-snapshotter/estargz v0.16.3 // indirect
 	github.com/docker/cli v28.0.1+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect

@@ -11,12 +11,15 @@ tests=(
   "-r skaffold -c /tmp/cache"
   "-r skaffold"
   "-s -r keys -o ./tmp/test6 -w"  # New test for the keys image
-  "--local example/keys.tar -o ./tmp/test7 -w"  # Test local tarball scanning
+  "--local docs/examples/keys.tar -o ./tmp/test7 -w"  # Test local tarball scanning
+  "-r whiteout-demo -o ./tmp/test8 -w --whiteout-filter"  # Test default whiteout-filter patterns
 )
 
 cleanup() {
   echo "Cleaning up old output..."
   rm -rf ./tmp
+  rm -rf results
+  rm -f scanned_shas.log
 }
 
 cleanup
@@ -40,16 +43,16 @@ for i in "${!tests[@]}"; do
     status=$?
   fi
 
-  if [ $status -eq 0 ] && grep -q "Reference" "$out_dir/stdout.log"; then
-    result="PASS"
-  else
-    result="FAIL"
-  fi
-
   after=$(mktemp)
   find "$out_dir" > "$after"
 
   change_count=$(diff -u "$before" "$after" | grep -E '^\+' | grep -v '^+++' | wc -l)
+
+  if [ $status -eq 0 ] && [ "$change_count" -gt 0 ]; then
+    result="PASS"
+  else
+    result="FAIL"
+  fi
 
   summary+=("$test_id: $result, $change_count files changed")
 

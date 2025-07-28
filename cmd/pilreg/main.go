@@ -70,7 +70,7 @@ func init() {
 	analysisFlags.BoolVarP(&truffleHog, "trufflehog", "x", false, "Scan image contents with TruffleHog.")
 	analysisFlags.BoolVarP(&whiteOut, "whiteout", "w", false, "Look for deleted/whiteout files in image layers.")
 	analysisFlags.StringSliceVar(&whiteOutFilter, "whiteout-filter", nil, "Filter patterns when extracting whiteouts. Defaults to 'tmp,cache,apk,apt'.")
-	analysisFlags.Lookup("whiteout-filter").NoOptDefVal = "tmp,cache,apk,apt"
+	analysisFlags.Lookup("whiteout-filter").NoOptDefVal = "tmp,cache,apk,apt,downloaded_packages,dist-info,site-packages,mssql-tools/bin,*/tmp/downloaded_packages/**,*/wheels/**,*/site-packages/**,*/.dist-info/**,*/opt/*-tmp/**,*/usr/share/info/**,*/mssql-tools/bin/**"
 	analysisFlags.BoolVarP(&all, "all", "a", true, "Enable all analysis options by default. (Very noisy!)")
 
 	rootCmd.PersistentFlags().AddFlagSet(analysisFlags)
