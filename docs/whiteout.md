@@ -57,17 +57,7 @@ echo Q1RGe3JlYWxfZmxhZ192aWRpZGVuX2hlcmV9 | base64 -d
 
 ## Animated Demo
 
-You can record this demonstration with [asciinema](https://asciinema.org/) and convert it to a GIF using [agg](https://github.com/asciinema/agg):
-
-```bash
-# Record the demo (from repo root)
-asciinema rec docs/whiteout-demo.cast -c docs/record_whiteout_demo.sh
-agg docs/whiteout-demo.cast docs/images/whiteout-demo.gif --speed 2
-```
-
-Below is an animated demo showing the review, build, push, and scan steps:
-
-![Whiteout Demo](images/whiteout-demo.gif)
+![Whiteout Demo](whiteout-demo.gif)
 
 ## Filtering Default Whiteouts
 
