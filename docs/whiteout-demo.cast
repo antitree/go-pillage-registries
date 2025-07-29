@@ -1,0 +1,13 @@
+{"version":2,"width":158,"height":35,"timestamp":1753754373,"command":"./docs/record_whiteout_demo.sh","env":{"SHELL":"/usr/bin/zsh"},"theme":{"fg":"#d0cfcc","bg":"#340002","palette":"#171421:#c01c28:#26a269:#a2734c:#12488b:#a347ba:#2aa1b3:#d0cfcc:#5e5c64:#f66151:#33da7a:#e9ad0c:#2a7bde:#c061cb:#33c7de:#ffffff"}}
+[0.003218, "o", "FROM alpine:3.18\r\n\r\n# Layer 1: Add a fake whiteout file (decoy #1)\r\n# This file is named like a whiteout but is just a regular file with fake content\r\nRUN echo \"CTF{nope_not_here}\" | base64 > /.wh.decoy1.txt\r\n\r\n# Layer 2: Add the real flag\r\nRUN mkdir -p /deep/hide && echo \"CTF{real_flag_hidden_here}\" | base64 > /deep/hide/flag.txt\r\n\r\n# Layer 3: Delete the real flag — this creates a whiteout for flag.txt\r\nRUN rm /deep/hide/flag.txt\r\n\r\n# Layer 4: Add another fake whiteout (decoy #2)\r\nRUN echo \"Just another ghost\" | base64 > /.wh.decoy2.txt\r\n\r\n# Layer 5: Add distraction content\r\nRUN echo \"Nothing to see here. Everything's clean.\" > /README.md\r\n\r\n"]
+[3.00461, "o", "== Scanning for whiteout files ==\r\n"]
+[3.007001, "o", "2025/07/28 21:59:37 ⚠️  --whiteout was set without --output or -o. Layers will be processed in memory.\r\n2025/07/28 21:59:37 \u001b[33m[WARN] --store-images requires output. Setting it to the current directory\u001b[0m\r\n"]
+[3.007015, "o", "2025/07/28 21:59:37 ℹ️  no token provided; using local Docker credentials if available\r\n"]
+[3.007262, "o", "2025/07/28 21:59:37    using anonymous access for localhost:5000\r\n"]
+[3.007271, "o", "2025/07/28 21:59:37 \u001b[34m[INFO] Registry: localhost:5000\r\n\u001b[0m\r\n"]
+[3.007294, "o", "2025/07/28 21:59:37 \u001b[34m[INFO] Repo: localhost:5000/whiteoutdemo\u001b[0m\r\n"]
+[3.08059, "o", "2025/07/28 21:59:37 \u001b[34m[INFO] Pulling image layers for: localhost:5000/whiteoutdemo:latest\u001b[0m\r\n"]
+[3.191988, "o", "2025/07/28 21:59:37 \u001b[34m[INFO] Restored whiteout-deleted file to results/localhost:5000/whiteoutdemo/latest/deep/hide/flag.txt.4\u001b[0m\r\n"]
+[3.223519, "o", "Q1RGe3JlYWxfZmxhZ19oaWRkZW5faGVyZX0K\r\n"]
+[3.226714, "o", "CTF{real_flag_hidden_here}\r\n"]
+[3.227395, "x", "0"]
