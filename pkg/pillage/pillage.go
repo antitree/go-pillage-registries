@@ -39,6 +39,7 @@ type ImageData struct {
 	Image      v1.Image
 }
 
+// Manifest represents the image manifest layers metadata.
 type Manifest struct {
 	Layers []struct {
 		Digest    string `json:"digest"`
@@ -47,6 +48,7 @@ type Manifest struct {
 	} `json:"layers"`
 }
 
+// StorageOptions configures caching, output paths, filtering, and storage behavior for image layers.
 type StorageOptions struct {
 	CachePath      string
 	OutputPath     string
@@ -61,6 +63,7 @@ type StorageOptions struct {
 //go:embed default_config.json
 var defaultConfigData []byte
 
+// BruteForceConfig holds repository prefixes and names to probe when falling back to brute force enumeration.
 type BruteForceConfig struct {
 	Repos []string `json:"repos"`
 	Names []string `json:"names"`
@@ -76,6 +79,8 @@ type FileVersion struct {
 	TypeFlag byte
 }
 
+// MakeCraneOptions returns crane.Options for secure or insecure registry access
+// and applies the provided authenticator or falls back to the default keychain.
 func MakeCraneOptions(insecure bool, auth authn.Authenticator) (options []crane.Option) {
 	if insecure {
 		options = append(options, crane.Insecure)
@@ -111,6 +116,8 @@ func shouldFilterWhiteout(name string, options *StorageOptions) bool {
 	return false
 }
 
+// Store retrieves and processes the image layers according to StorageOptions.
+// It handles caching, whiteout files, tarball storage, and error logging per layer.
 func (image *ImageData) Store(options *StorageOptions) error {
 	LogInfo("Pulling image layers for: %s", image.Reference)
 
@@ -163,11 +170,6 @@ func (image *ImageData) Store(options *StorageOptions) error {
 			}
 
 			for idx, layer := range parsed.Layers {
-				// whiteout files are small
-				// if layer.Size > options.FilterSmall {
-				// 	continue
-				// }
-
 				layerDir := filepath.Join(imagePath, strings.ReplaceAll(layer.Digest, ":", "_"))
 
 				err := os.MkdirAll(layerDir, 0755)
@@ -202,6 +204,8 @@ func (image *ImageData) Store(options *StorageOptions) error {
 	return image.Error
 }
 
+// EnumLayer pulls the specified layer reference and unpacks it into a temporary cache,
+// tracking previous versions for whiteout processing and optionally storing tarballs.
 func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, storageOptions *StorageOptions, craneOpts []crane.Option, previousFiles map[string][]FileVersion, tempDir string) error {
 	crLayer, err := crane.PullLayer(layerRef, craneOpts...)
 	if err != nil {
@@ -389,6 +393,8 @@ func EnumLayer(image *ImageData, layerDir, layerRef string, layerNumber int, sto
 	return nil
 }
 
+// EnumLayerFromLayer processes an already fetched layer object similarly to EnumLayer,
+// extracting files and tracking whiteout operations.
 func EnumLayerFromLayer(image *ImageData, layerDir string, layer v1.Layer, layerNumber int, storageOptions *StorageOptions, previousFiles map[string][]FileVersion, tempDir string) error {
 	rc, err := layer.Compressed()
 	if err != nil {
@@ -594,16 +600,6 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 			result.Error = err
 		}
 
-		// HACK this was a test for whiteout detection. This shinks the layers but it's arbitrary
-		// TODO refactor
-		// for i := 0; i < len(manifest.Layers); {
-		// 	if manifest.Layers[i].Size > 40000 {
-		// 		manifest.Layers = append(manifest.Layers[:i], manifest.Layers[i+1:]...)
-		// 	} else {
-		// 		i++
-		// 	}
-		// }
-
 		strManifest, err := json.MarshalIndent(manifest, "", "  ")
 		if err != nil {
 			LogInfo("Error fetching parsing Manifest for image %s: %s", ref, err)
@@ -618,7 +614,7 @@ func EnumImage(reg string, repo string, tag string, options ...crane.Option) <-c
 			}
 			return err
 		})
-		//config, err := crane.Config(ref, options...)
+
 		if err != nil {
 			LogInfo("Error fetching config for image %s: %s (the config may be in the manifest itself)", ref, err)
 
@@ -881,6 +877,8 @@ func ValidateTarball(path string) error {
 	return nil
 }
 
+// RunTruffleHog invokes the trufflehog binary against a Docker image reference,
+// logging the output and returning an error on non-zero exit.
 func RunTruffleHog(imageRef *ImageData) error {
 	image := securejoin(imageRef.Registry, imageRef.Repository, imageRef.Tag)
 	cmd := exec.Command("trufflehog", "docker", fmt.Sprintf("--image=%s", image))
@@ -893,6 +891,8 @@ func RunTruffleHog(imageRef *ImageData) error {
 	return nil
 }
 
+// retryWithBackoff executes op up to attempts times with exponential backoff and jitter.
+// It aborts immediately on authentication errors and returns the last encountered error.
 func retryWithBackoff(attempts int, baseDelay time.Duration, op func() error) error {
 	delay := baseDelay
 
@@ -916,9 +916,6 @@ func retryWithBackoff(attempts int, baseDelay time.Duration, op func() error) er
 			LogInfo("Retrying after %v due to error: %v", sleep, err)
 			time.Sleep(sleep)
 			delay *= 2
-			// if delay > 30*time.Second {
-			// 	delay = 30 * time.Second // Cap max delay
-			// }
 		} else {
 			return err
 		}

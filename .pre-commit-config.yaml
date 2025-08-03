@@ -1,0 +1,18 @@
+repos:
+- repo: https://github.com/pre-commit/mirrors-gofmt
+  rev: v1
+  hooks:
+  - id: gofmt
+    args: ["-s", "-l", "-w"]
+
+- repo: https://github.com/pre-commit/mirrors-goimports
+  rev: v0.1.5
+  hooks:
+  - id: goimports
+    args: ["-local", "github.com/antitree/go-pillage-registries"]
+
+- repo: https://github.com/pre-commit/mirrors-golangci-lint
+  rev: v1.54.2
+  hooks:
+  - id: golangci-lint
+    args: ["run", "--timeout=5m"]
