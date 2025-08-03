@@ -1,6 +1,6 @@
 # go-pillage-registries ( pilreg )
 
-![go-pillage-registries logo](images/logo-small.png)
+![go-pillage-registries logo](docs/images/logo-small.png)
 
 This project takes a Docker registry and pillages the manifest and configuration for each image in its catalog.
 
