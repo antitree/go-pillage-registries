@@ -1,0 +1,27 @@
+FROM golang:1.21 AS builder
+
+WORKDIR /builder
+
+# Install tools
+RUN apt-get update && apt-get install -y --no-install-recommends git curl docker.io gnupg ca-certificates jq \
+   && rm -rf /var/lib/apt/lists/*
+
+# Install cosign
+RUN curl -sSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
+    -o /usr/local/bin/cosign && chmod +x /usr/local/bin/cosign
+
+# Copy in credentials and signing keys at build time
+# In a real setup, these should be injected at runtime or via secret mount
+COPY demo-materials/signing.key /secrets/signing.key
+COPY demo-materials/docker.config.json /secrets/docker/config.json
+
+# Copy script that clones, builds, signs, and pushes
+COPY demo-materials/build-and-sign.sh /usr/local/bin/build-and-sign
+RUN chmod +x /usr/local/bin/build-and-sign
+
+# Clean up keys after build (simulate secure runtime)
+RUN rm -f /secrets/signing.key 
+RUN rm -rf /secrets/docker/config.json
+
+# Entrypoint: expects repo URL and image tag
+ENTRYPOINT ["/usr/local/bin/build-and-sign"]

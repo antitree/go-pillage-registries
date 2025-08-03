@@ -901,6 +901,12 @@ func retryWithBackoff(attempts int, baseDelay time.Duration, op func() error) er
 		if err == nil {
 			return nil
 		}
+		// If authentication error, do not retry; skip permanently
+		errStr := err.Error()
+		if strings.Contains(errStr, "UNAUTHORIZED") || strings.Contains(errStr, "authentication required") {
+			LogWarn("Skipping retry due to authentication error: %v", err)
+			return err
+		}
 
 		if i < attempts-1 {
 			// Add jitter (up to 50% of delay)
