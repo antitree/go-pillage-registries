@@ -19,6 +19,7 @@ Welcome to **pilreg** – a CLI tool for pentesters and security engineers to 
 2. Read individual feature guides:
    - [Whiteout Analysis](whiteout.md)
    - [TruffleHog Integration](trufflehog.md)
+   - [Shell Autocomplete](autocomplete.md)
 3. Try the examples under `docs/examples/`.
 
 For full CLI reference and advanced options, see the main [README](../README.md).

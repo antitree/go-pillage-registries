@@ -86,54 +86,16 @@ If `--local` is not provided and the value for `<registry>` ends with a common t
 
 ## Shell Autocomplete
 
-To generate a shell completion script, invoke pilreg with `--autocomplete` and your shell name (bash, zsh, fish or powershell). For example:
-
-```bash
-# Bash:
-pilreg --autocomplete bash > /etc/bash_completion.d/pilreg
-
-# Zsh (Oh My Zsh):
-pilreg --autocomplete zsh > ${fpath[1]}/_pilreg
-
-# Fish:
-pilreg --autocomplete fish | source
-
-# PowerShell:
-pilreg --autocomplete powershell > pilreg.ps1
-```
+For instructions on generating shell completion scripts, see [docs/autocomplete.md](docs/autocomplete.md).
 
 ## Example:
 
 In the [examples directory](docs/examples/) there is a demo Dockerfile that builds an image
 with hidden (whiteout) secrets for testing the `--whiteout` feature.
 
-## Developer Setup
+# Developer Setup
 
-This project uses pre-commit hooks to enforce Go formatting, import grouping, and linting.
-To enable these checks locally, first install the [pre-commit](https://pre-commit.com/) framework:
-
-```bash
-pip install pre-commit
-```
-
-Then install the Git hook scripts:
-
-```bash
-pre-commit install
-```
-
-To run all checks against all files (e.g. after first install):
-
-```bash
-pre-commit run --all-files
-```
-
-The configured hooks include:
-- `gofmt` (with simplification via `-s`)
-- `goimports` (organizes and groups imports according to the module path)
-- `golangci-lint` (runs govet, staticcheck, errcheck, ineffassign, unused, and more)
-
-These checks are also executed in CI to ensure consistent code quality.
+For development setup and contribution instructions, see [docs/developer-setup.md](docs/developer-setup.md).
 
 ## Acknowledgments
 * Thanks to @jmakinen-ncc the original author of NCC Group's go-registry-pillage
